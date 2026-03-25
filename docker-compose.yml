@@ -20,15 +20,7 @@ services:
         mkdir -p /config
         printf "instances:\n  - name: wazuh.indexer\n    ip:\n      - 127.0.0.1\n  - name: wazuh.manager\n  - name: wazuh.dashboard\n" > /config/instances.yml
         /entrypoint.sh
-        # ESTO ES LO QUE ARREGLA EL ERROR DEL VIDEO: Movemos todo a la raíz de /certs
-        cp /certs/wazuh.manager/wazuh.manager.pem /certs/filebeat.pem
-        cp /certs/wazuh.manager/wazuh.manager.key /certs/filebeat.key
-        cp /certs/wazuh.indexer/wazuh.indexer.pem /certs/indexer.pem
-        cp /certs/wazuh.indexer/wazuh.indexer.key /certs/indexer-key.pem
-        cp /certs/admin/admin.pem /certs/admin.pem
-        cp /certs/admin/admin.key /certs/admin-key.pem
         chmod -R 777 /certs
-        echo "Certificados listos en la raíz"
     networks:
       - wazuh_net
 
@@ -66,8 +58,9 @@ services:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=admin
       - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
-      - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
-      - SSL_KEY=/etc/ssl/filebeat.key
+      # RUTAS EXACTAS PARA 4.8.0:
+      - SSL_CERTIFICATE=/etc/ssl/wazuh.manager/wazuh.manager.pem
+      - SSL_KEY=/etc/ssl/wazuh.manager/wazuh.manager.key
       - API_PASSWORD=admin
     volumes:
       - wazuh_manager_data:/var/ossec
@@ -101,5 +94,4 @@ networks:
   wazuh_net:
     driver: bridge
 
-
-    /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cacert /usr/share/wazuh-indexer/certs/root-ca.pem -cert /usr/share/wazuh-indexer/certs/admin.pem -key /usr/share/wazuh-indexer/certs/admin-key.pem -h localhost -nhnv
+    docker exec -u 0 -it $(docker ps -qf "name=wazuh.indexer") /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cacert /usr/share/wazuh-indexer/certs/root-ca.pem -cert /usr/share/wazuh-indexer/certs/admin/admin.pem -key /usr/share/wazuh-indexer/certs/admin/admin-key.pem -h localhost -nhnv
