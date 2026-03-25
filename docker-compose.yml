@@ -20,7 +20,7 @@ services:
         mkdir -p /config
         printf "instances:\n  - name: wazuh.indexer\n    ip:\n      - 127.0.0.1\n  - name: wazuh.manager\n  - name: wazuh.dashboard\n" > /config/instances.yml
         /entrypoint.sh
-        echo "Certificados creados"
+        echo "Certificados generados correctamente."
     networks:
       - wazuh_net
 
@@ -58,7 +58,7 @@ services:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=admin
       - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
-      # AQUÍ ESTÁ EL CAMBIO DE RUTA:
+      # Rutas corregidas para que coincidan con el generador:
       - SSL_CERTIFICATE=/etc/ssl/wazuh.manager/wazuh.manager.pem
       - SSL_KEY=/etc/ssl/wazuh.manager/wazuh.manager.key
       - API_PASSWORD=admin
@@ -76,7 +76,7 @@ services:
       wazuh.init:
         condition: service_completed_successfully
     ports:
-      - 443:5601
+      - "443:5601"
     environment:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=admin
