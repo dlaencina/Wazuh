@@ -103,3 +103,6 @@ services:
 networks:
   wazuh_net:
     driver: bridge
+
+
+bash /usr/share/wazuh-indexer/bin/indexer-security-admin.sh -cacert /usr/share/wazuh-indexer/certs/root-ca.pem -cert /usr/share/wazuh-indexer/certs/indexer.pem -key /usr/share/wazuh-indexer/certs/indexer-key.pem -h localhost -nhnv
