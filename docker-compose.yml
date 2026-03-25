@@ -58,7 +58,6 @@ services:
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=admin
       - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
-      # RUTAS EXACTAS PARA 4.8.0:
       - SSL_CERTIFICATE=/etc/ssl/wazuh.manager/wazuh.manager.pem
       - SSL_KEY=/etc/ssl/wazuh.manager/wazuh.manager.key
       - API_PASSWORD=admin
@@ -94,4 +93,6 @@ networks:
   wazuh_net:
     driver: bridge
 
-    docker exec -u 0 -it $(docker ps -qf "name=wazuh.indexer") /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cacert /usr/share/wazuh-indexer/certs/root-ca.pem -cert /usr/share/wazuh-indexer/certs/admin/admin.pem -key /usr/share/wazuh-indexer/certs/admin/admin-key.pem -h localhost -nhnv
+sudo docker exec -u 0 -it wazusiem-wazuh.indexer-1 chmod +x /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh
+
+sudo docker exec -u 0 -it wazusiem-wazuh.indexer-1 /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cacert /usr/share/wazuh-indexer/certs/root-ca.pem -cert /usr/share/wazuh-indexer/certs/admin/admin.pem -key /usr/share/wazuh-indexer/certs/admin/admin-key.pem -h localhost -nhnv
