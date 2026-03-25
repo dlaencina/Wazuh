@@ -7,26 +7,25 @@ volumes:
   wazuh_dashboard_config:
 
 services:
-  # 1. GENERADOR DE CERTIFICADOS (Afinado)
   wazuh.init:
-    image: wazuh/wazuh-certs-generator:4.8.0 # Usamos la misma versión que el resto
+    image: wazuh/wazuh-certs-generator:4.8.0
     hostname: wazuh.init
     user: "0:0"
     volumes:
       - wazuh_certs:/certs
     entrypoint: >
       /bin/sh -c "
-      if [ ! -f /certs/root-ca.pem ]; then
-        echo 'Instancias:\n  - name: wazuh.indexer\n    ip:\n      - 127.0.0.1\n  - name: wazuh.manager\n  - name: wazuh.dashboard\n' > /config/instances.yml &&
-        /entrypoint.sh &&
-        echo 'Certificados creados con éxito';
-      else
-        echo 'Certificados ya existentes, saltando paso';
-      fi"
+      echo 'instances:
+        - name: wazuh.indexer
+          ip:
+            - 127.0.0.1
+        - name: wazuh.manager
+        - name: wazuh.dashboard' > /config/instances.yml &&
+      /entrypoint.sh &&
+      echo 'Certificados listos.'"
     networks:
       - wazuh_net
 
-  # 2. WAZUH INDEXER
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.8.0
     hostname: wazuh.indexer
@@ -44,7 +43,6 @@ services:
     networks:
       - wazuh_net
 
-  # 3. WAZUH MANAGER
   wazuh.manager:
     image: wazuh/wazuh-manager:4.8.0
     hostname: wazuh.manager
@@ -71,7 +69,6 @@ services:
     networks:
       - wazuh_net
 
-  # 4. WAZUH DASHBOARD
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.8.0
     hostname: wazuh.dashboard
