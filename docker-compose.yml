@@ -8,21 +8,20 @@ volumes:
 
 services:
   wazuh.init:
-    image: wazuh/wazuh-certs-generator:0.0.1 # Esta es la versión que SÍ existe
+    image: wazuh/wazuh-certs-generator:0.0.1
     hostname: wazuh.init
     user: "0:0"
     volumes:
       - wazuh_certs:/certs
-    entrypoint: >
-      /bin/sh -c "
-      echo 'instances:
-        - name: wazuh.indexer
-          ip:
-            - 127.0.0.1
-        - name: wazuh.manager
-        - name: wazuh.dashboard' > /config/instances.yml &&
-      /entrypoint.sh &&
-      echo 'Certificados generados con éxito.'"
+    # Corregido: Creamos la carpeta /config antes para evitar el 'code 2'
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /config
+        printf "instances:\n  - name: wazuh.indexer\n    ip:\n      - 127.0.0.1\n  - name: wazuh.manager\n  - name: wazuh.dashboard\n" > /config/instances.yml
+        /entrypoint.sh
+        echo "Certificados creados correctamente"
     networks:
       - wazuh_net
 
