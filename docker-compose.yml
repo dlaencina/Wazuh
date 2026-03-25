@@ -2,3 +2,6 @@ sudo docker exec -u 0 -it $(docker ps -qf "name=wazuh.indexer") /usr/share/wazuh
 
 
 sudo docker exec -u 0 -it $(docker ps -qf "name=wazuh.indexer") /bin/bash -c "chmod +x /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh && /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cacert /usr/share/wazuh-indexer/certs/root-ca.pem -cert /usr/share/wazuh-indexer/certs/admin.pem -key /usr/share/wazuh-indexer/certs/admin-key.pem -h localhost -nhnv"
+
+
+sudo docker exec -u 0 -it $(sudo docker ps -qf "name=indexer") /bin/bash -c "chmod +x /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh && /usr/share/wazuh-indexer/plugins/opensearch-security/tools/securityadmin.sh -cacert /usr/share/wazuh-indexer/certs/root-ca.pem -cert /usr/share/wazuh-indexer/certs/admin/admin.pem -key /usr/share/wazuh-indexer/certs/admin/admin-key.pem -h localhost -nhnv"
