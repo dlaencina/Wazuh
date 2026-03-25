@@ -13,7 +13,6 @@ services:
     user: "0:0"
     volumes:
       - wazuh_certs:/certs
-    # Corregido: Creamos la carpeta /config antes para evitar el 'code 2'
     entrypoint:
       - /bin/sh
       - -c
@@ -21,7 +20,7 @@ services:
         mkdir -p /config
         printf "instances:\n  - name: wazuh.indexer\n    ip:\n      - 127.0.0.1\n  - name: wazuh.manager\n  - name: wazuh.dashboard\n" > /config/instances.yml
         /entrypoint.sh
-        echo "Certificados creados correctamente"
+        echo "Certificados creados"
     networks:
       - wazuh_net
 
@@ -57,11 +56,12 @@ services:
     environment:
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_PASSWORD=admin
       - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
-      - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
-      - SSL_KEY=/etc/ssl/filebeat.key
-      - API_PASSWORD=MyS3cr37P450r.*-
+      # AQUÍ ESTÁ EL CAMBIO DE RUTA:
+      - SSL_CERTIFICATE=/etc/ssl/wazuh.manager/wazuh.manager.pem
+      - SSL_KEY=/etc/ssl/wazuh.manager/wazuh.manager.key
+      - API_PASSWORD=admin
     volumes:
       - wazuh_manager_data:/var/ossec
       - wazuh_certs:/etc/ssl
@@ -79,11 +79,11 @@ services:
       - 443:5601
     environment:
       - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
+      - INDEXER_PASSWORD=admin
       - WAZUH_API_URL=https://wazuh.manager
       - DASHBOARD_USERNAME=kibanaserver
       - DASHBOARD_PASSWORD=kibanaserver
-      - API_PASSWORD=MyS3cr37P450r.*-
+      - API_PASSWORD=admin
     volumes:
       - wazuh_certs:/usr/share/wazuh-dashboard/certs
       - wazuh_dashboard_config:/usr/share/wazuh-dashboard/data/wazuh/config
@@ -93,13 +93,3 @@ services:
 networks:
   wazuh_net:
     driver: bridge
-
-
-    sudo docker run -d -p 8000:8000 -p 9443:9443 --name portainer \
-    --restart=always \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v portainer_data:/data \
-    portainer/portainer-ce:latest
-
-
-    docker rm -f $(docker ps -a | grep wazuh | awk '{print $1}')
