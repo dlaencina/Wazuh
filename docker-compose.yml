@@ -1,51 +1,24 @@
-Fase 1: Preparación del Host (El cimiento)
-Vamos a fijar la memoria virtual de forma permanente para que el Indexer de Wazuh nunca más sufra falta de memoria, incluso si el servidor se reinicia.
+1. Eliminar el Stack en Portainer
+Ve a la interfaz web de Portainer > Stacks.
+
+Selecciona tu stack de Wazuh y haz clic en Delete.
+
+Qué hace: Detiene y destruye los contenedores (Indexer, Manager, Dashboard) y elimina la red interna que Portainer creó para comunicarlos.
+
+2. Borrar los datos persistentes (Volúmenes)
+En tu terminal, ejecuta:
 
 Bash
-echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
-tee -a /etc/sysctl.conf: Escribe el valor directamente en el archivo de configuración del núcleo de Linux.
+docker volume prune -f
+Qué hace: El comando prune elimina todos los volúmenes de Docker que no estén en uso por un contenedor activo. El flag -f (force) evita que te pida confirmación. Al haber borrado el stack en el paso 1, esto destruirá las bases de datos, alertas y logs de Wazuh guardados en tu disco.
 
-sysctl -p: Recarga la configuración en caliente para aplicarla inmediatamente sin reiniciar.
-
-Fase 2: Instalación de Docker y Portainer
-Instalamos los motores base y levantamos la interfaz de gestión.
+3. Borrar los certificados antiguos
+Para no arrastrar configuraciones viejas o llaves criptográficas a tu próximo despliegue, limpia la carpeta de certificados generada:
 
 Bash
-# 1. Instalar Docker y el plugin Compose
-sudo apt-get update
-sudo apt-get install -y docker.io docker-compose-v2
+rm -rf /portainer/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/*
+Qué hace: rm -rf fuerza el borrado recursivo de todo el contenido dentro de la carpeta de certificados, dejándola vacía y lista para generar credenciales nuevas cuando lo necesites.
 
-# 2. Habilitar el servicio
-sudo systemctl enable --now docker
+Una vez hecho esto, tu PC quedará totalmente limpio de este despliegue de Wazuh.
 
-# 3. Levantar Portainer
-sudo docker volume create portainer_data
-sudo docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest
-docker-compose-v2: Instala la versión moderna de Compose integrada en la CLI de Docker.
-
--v /var/run/docker.sock...: Conecta Portainer con el "cerebro" interno de Docker en tu servidor para que pueda leer y controlar los contenedores que vayamos a crear.
-
-Fase 3: Preparación y Despliegue de Wazuh
-Seguimos exactamente la ruta oficial para un nodo único (Single-Node), lo que evitará los problemas de "carpetas fantasma" que tuvimos al pegar el código en la web.
-
-Bash
-# 1. Descargar el repositorio oficial (usando la versión estable actual)
-git clone https://github.com/wazuh/wazuh-docker.git -b v4.14.4
-cd wazuh-docker/single-node
-
-# 2. Generar los certificados de seguridad
-sudo docker compose -f generate-indexer-certs.yml run --rm generator
-git clone -b v4.14.4: Descarga solo la rama correspondiente a la versión que necesitas.
-
-run --rm generator: Levanta un contenedor temporal exclusivo para crear los certificados .pem y .key en la carpeta ./config, y se autodestruye (--rm) al terminar para no ocupar espacio.
-
-El Despliegue Final:
-
-Bash
-sudo docker compose up -d
-up -d: Lee el archivo docker-compose.yml que ya está en esa carpeta (con todas sus rutas locales perfectamente estructuradas por los desarrolladores de Wazuh) y lanza los tres servicios (Indexer, Manager y Dashboard) en segundo plano (-d).
-
-Ejecuta estas tres fases. Al hacerlo así, delegamos la lectura de los archivos de configuración al motor nativo de Docker en lugar de a Portainer, bloqueando el 100% de los errores de mapeo.
-
-¿Me confirmas cuando termines de ejecutar el up -d para verificar juntos si el puerto 443 responde correctamente?
+¿Quieres que vayamos preparando y analizando el docker-compose.yml con las rutas exactas que usarás en el PC del trabajo?
