@@ -1,1 +1,1 @@
-docker ps --format "{{.Names}}" | grep indexer
+docker exec -it wazusiem-wazuh.indexer-1 find /usr/share/wazuh-indexer -name "indexer-security-admin.sh"
