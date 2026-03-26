@@ -1,4 +1,4 @@
-1. Detener y borrar todos los contenedores en ejecución
+1. Detener y borrar todos los contenedores en ejecució
 
 Bash
 sudo docker stop $(sudo docker ps -aq) 2>/dev/null
@@ -18,6 +18,20 @@ Bash
 sudo rm -rf /var/lib/docker /var/lib/containerd /etc/docker
 sudo rm -rf ~/wazuh-docker /portainer
 Qué hace: Destruye sin preguntar (-rf) los volúmenes, imágenes, configuraciones de red y las carpetas de trabajo anteriores que pudieras tener. Tu máquina ahora está en blanco.
+
+
+ sudo apt-get update\nsudo apt-get install -y docker.io docker-compose-v2\n
+  944  sudo apt-get install -y docker.io docker-compose
+  945  sudo systemctl enable --now docker
+  946  sudo docker volume create portainer_data\nsudo docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest
+  947  sudo systemctl restart docker
+  948  sudo docker run -d -p 8000:8000 -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest
+  949  docker ps
+  950  clear
+  951  cd /portainer
+  952  # 1. Creamos la carpeta en la raíz (necesitas sudo)\nsudo mkdir /portainer\n\n# 2. Le damos la propiedad a tu usuario (kali) para que puedas trabajar sin sudo todo el tiempo\nsudo chown kali:kali /portainer\n\n# 3. Entramos y preparamos el terreno\ncd /portainer
+  953  # 1. Descargamos el repo oficial (versión estable)\ngit clone https://github.com/wazuh/wazuh-docker.git -b v4.14.4\ncd wazuh-docker/single-node\n\n# 2. Generamos los certificados (Esto crea la carpeta /portainer/wazuh-docker/single-node/config)\ndocker compose -f generate-indexer-certs.yml run --rm generator
+
 
 Fase 2: Preparación del Sistema Operativo
 Preparamos el kernel de Linux para que el indexador no colapse por falta de memoria.
