@@ -1,5 +1,27 @@
 sudo apt-get purge -y docker docker-engine docker.io docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin docker-compose-v2 containerd containerd.io
+Paso 2: Limpiar dependencias huérfanas
+Bash
+sudo apt-get autoremove -y --purge
+Qué hace: Elimina cualquier librería o paquete secundario que se instaló junto con Docker y que tu sistema ya no necesita.
 
+Paso 3: Borrar el binario manual de Docker Compose
+Bash
+sudo rm -f /usr/local/bin/docker-compose
+Qué hace: Elimina el archivo ejecutable que descargaste manualmente con curl en uno de tus intentos anteriores.
+
+Paso 4: Destruir los datos físicos (Imágenes, volúmenes y red)
+Bash
+sudo rm -rf /var/lib/docker
+sudo rm -rf /var/lib/containerd
+sudo rm -rf /etc/docker
+Qué hace: Este es el paso más destructivo y necesario para empezar de cero. Elimina físicamente el lugar donde Docker guarda los contenedores descargados, las redes virtuales y las configuraciones del demonio.
+
+Paso 5: Eliminar el repositorio y las claves criptográficas
+Bash
+sudo rm -f /etc/apt/sources.list.d/docker.list
+sudo rm -f /etc/apt/keyrings/docker.asc
+sudo rm -f /etc/apt/keyrings/docker.gpg
+sudo apt-get update
 
 1. Detener y borrar todos los contenedores en ejecució
 
