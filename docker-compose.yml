@@ -1,4 +1,37 @@
-docker exec -it wazusiem-wazuh.indexer-1 bash /usr/share/wazuh-indexer/bin/indexer-security-admin.sh
+1. Detener y destruir los contenedores actuales
+Primero debemos apagar y borrar lo que está corriendo antes de desinstalar el programa principal.
 
+Bash
+docker stop $(docker ps -aq)
+docker system prune -a --volumes -f
+docker stop $(...): Busca los identificadores de todos los contenedores que existen y los detiene de golpe.
 
-docker restart wazusiem-wazuh.manager-1 wazusiem-wazuh.dashboard-1
+docker system prune...: Es la "bomba nuclear" de Docker. Borra todas las imágenes descargadas, redes y volúmenes de datos asociados. El -f lo ejecuta sin pedir confirmación. Esto te devolverá todos los gigas de espacio al instante.
+
+2. Desinstalar Docker y Portainer
+Ahora eliminamos el motor de Docker y todos sus componentes de Ubuntu. (Portainer vive dentro de Docker, así que al matar Docker, Portainer desaparece con él).
+
+Bash
+sudo apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras
+sudo apt-get autoremove -y
+purge: A diferencia de un desinstalado normal, esto elimina los programas y también destruye sus archivos de configuración internos.
+
+autoremove: Busca y elimina librerías huérfanas que se instalaron como dependencias de Docker y que ya no sirven para nada en tu sistema.
+
+3. Eliminar directorios residuales
+Aunque desinstales el programa, Docker y Wazuh dejan carpetas físicas en el disco duro. Vamos a fulminarlas.
+
+Bash
+sudo rm -rf /var/lib/docker
+sudo rm -rf /var/lib/containerd
+sudo rm -rf /home/alphacentauri/wazuh-docker
+rm -rf: Comando de borrado absoluto. Elimina de forma recursiva (-r) y forzada (-f). Las dos primeras líneas eliminan el núcleo de trabajo de Docker, y la última borra la carpeta del repositorio de Wazuh que descargaste en tu usuario.
+
+4. Restaurar la memoria virtual
+Al principio te pedí que aumentaras la memoria virtual para el Indexer. Vamos a devolverla a su valor estándar en Linux (65530).
+
+Bash
+sudo sysctl -w vm.max_map_count=65530
+Nota: Si durante tus pruebas llegaste a escribir este cambio dentro del archivo /etc/sysctl.conf para hacerlo permanente, simplemente entra a ese archivo con sudo nano /etc/sysctl.conf, borra la línea y guarda.
+
+Con esto, tu servidor queda limpio, restaurado y exactamente igual que antes de que empezáramos. He guardado en mi memoria todo el contexto de esta sesión (las versiones, los problemas de espacio y las rutas absolutas) para mañana.
