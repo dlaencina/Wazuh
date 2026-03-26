@@ -71,8 +71,8 @@ services:
       - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
       - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/wazuh.dashboard.key:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.key
       - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
-      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_dashboard/wazuh.dashboard.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
-      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_dashboard/wazuh_dashboard.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
+      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
       - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_dashboard/custom_css:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
     depends_on:
       - wazuh.indexer
