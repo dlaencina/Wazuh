@@ -1,24 +1,4 @@
- 890  sudo cd ~\nrm -rf ProyectoWazuh
-  891  cd ~\nsudo rm -rf ProyectoWazuh
-  892  sudo apt-get purge docker.io docker-compose containerd runc
-  893  sudo apt-get autoremove --purge
-  894  sudo apt update
-  895  sudo apt upgrade -y
-  896  sudo apt autoremove
-  897  sudo apt clean
-  898  clear
-  899  sudo apt install docker.io docker-compose -y
-  900  ls
-  901  sudo systemctl enable --now docker
-  902  sudo usermod -aG docker $USER
-  903  docker --version
-  904  ls
-  905  docker volume create portainer_data
-  906  sudo docker volume create portainer_data
-  907  sudo docker run -d -p 8000:8000 -p 9443:9443 --name portainer \\n    --restart=always \\n    -v /var/run/docker.sock:/var/run/docker.sock \\n    -v portainer_data:/data \\n    portainer/portainer-ce:latest
-
-
-
+sudo apt-get purge -y docker docker-engine docker.io docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin docker-compose-v2 containerd containerd.io
 
 
 1. Detener y borrar todos los contenedores en ejecució
