@@ -1,41 +1,32 @@
 version: '3.8'
 
 services:
-  # 1. EL GENERADOR: Crea los certificados sin que tú hagas nada en la terminal
-  generator:
-    image: wazuh/wazuh-certs-generator:4.7.2
-    volumes:
-      - wazuh-certs:/certificates/
-    environment:
-      - HTTP_SERVER_FULL_NAME=wazuh.indexer
-    command: -v
-
-  # 2. EL INDEXER: El motor de búsqueda
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.7.2
     hostname: wazuh.indexer
     restart: always
-    depends_on:
-      generator:
-        condition: service_completed_successfully
     environment:
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
     volumes:
-      - wazuh-certs:/usr/share/wazuh-indexer/certs/:ro
+      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/:/usr/share/wazuh-indexer/certs/:ro
     ports:
       - "9200:9200"
 
-  # 3. EL MANAGER: El cerebro de seguridad
   wazuh.manager:
     image: wazuh/wazuh-manager:4.7.2
     hostname: wazuh.manager
     restart: always
-    depends_on:
-      - wazuh.indexer
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "514:514/udp"
+    environment:
+      - INDEXER_URL=https://wazuh.indexer:9200
+      - INDEXER_USER=admin
+      - INDEXER_PASSWORD=SecretPassword01!
     volumes:
-      - wazuh-certs:/etc/wazuh-indexer/certs/:ro
+      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/:/etc/wazuh-indexer/certs/:ro
 
-  # 4. EL DASHBOARD: Tu interfaz visual
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.7.2
     hostname: wazuh.dashboard
@@ -44,10 +35,8 @@ services:
       - "443:5601"
     environment:
       - INDEXER_URL=https://wazuh.indexer:9200
+      - WAZUH_MANAGER=https://wazuh.manager
     volumes:
-      - wazuh-certs:/usr/share/wazuh-dashboard/certs/:ro
+      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/:/usr/share/wazuh-dashboard/certs/:ro
     depends_on:
       - wazuh.indexer
-
-volumes:
-  wazuh-certs: # Este volumen guardará los certificados automáticamente
