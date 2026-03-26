@@ -1,3 +1,36 @@
+Paso 1: Preparar las llaves y el repositorio oficial
+Esto descarga las credenciales oficiales de Docker y le dice a tu Ubuntu 24.04 exactamente de dónde bajar los paquetes seguros:
+
+Bash
+sudo apt-get update
+sudo apt-get install ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+Paso 2: Instalar Docker y Compose
+Ahora actualizamos la lista para que reconozca el nuevo repositorio que acabamos de agregar e instalamos el motor completo:
+
+Bash
+sudo apt-get update
+sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+Paso 3: Permisos para tu usuario
+Para que no tengas que escribir sudo cada vez que quieras usar Docker (y para que Portainer funcione más cómodo luego):
+
+Bash
+sudo usermod -aG docker $USER
+newgrp docker
+Para confirmar que hemos triunfado, ejecuta este comando de prueba oficial de Docker:
+
+Bash
+docker run hello-world
+Si te devuelve un mensaje que dice "Hello from Docker! This message shows that your installation appears to be working correctly", habremos superado el obstáculo. ¿Me avisas si sale bien para que pasemos inmediatamente a levantar Portainer y Wazuh?
+
+
 sudo apt-get purge -y docker docker-engine docker.io docker-ce docker-ce-cli docker-buildx-plugin docker-compose-plugin docker-compose-v2 containerd containerd.io
 Paso 2: Limpiar dependencias huérfanas
 Bash
