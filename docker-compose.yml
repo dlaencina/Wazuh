@@ -8,7 +8,8 @@ services:
     environment:
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
     volumes:
-      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/:/usr/share/wazuh-indexer/certs/:ro
+      - wazuh-indexer-certs:/usr/share/wazuh-indexer/certs:ro
+      - wazuh-indexer-data:/usr/share/wazuh-indexer/data
     ports:
       - "9200:9200"
 
@@ -25,7 +26,8 @@ services:
       - INDEXER_USER=admin
       - INDEXER_PASSWORD=SecretPassword01!
     volumes:
-      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/:/etc/wazuh-indexer/certs/:ro
+      - wazuh-indexer-certs:/etc/wazuh-indexer/certs:ro
+      - wazuh-manager-data:/var/ossec/data
 
   wazuh.dashboard:
     image: wazuh/wazuh-dashboard:4.7.2
@@ -37,6 +39,11 @@ services:
       - INDEXER_URL=https://wazuh.indexer:9200
       - WAZUH_MANAGER=https://wazuh.manager
     volumes:
-      - /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/:/usr/share/wazuh-dashboard/certs/:ro
+      - wazuh-indexer-certs:/usr/share/wazuh-dashboard/certs:ro
     depends_on:
       - wazuh.indexer
+
+volumes:
+  wazuh-indexer-certs:
+  wazuh-indexer-data:
+  wazuh-manager-data:
