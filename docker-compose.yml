@@ -1,13 +1,10 @@
-export JAVA_HOME=/usr/share/wazuh-indexer/jdk
+docker stop $(docker ps -a -q --filter name=wazuh)
+docker rm $(docker ps -a -q --filter name=wazuh)
 
 
-bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/wazuh-passwords-tool.sh -u admin -p "N0str0m0-A1i3n-Breach*99"
+docker network rm $(docker network ls -q --filter name=wazuh)
+docker volume rm $(docker volume ls -q | grep wazuh)
 
+cd /opt/wazuh/single-node/
+sudo rm -rf config/certs
 
-chmod +x /usr/share/wazuh-indexer/plugins/opensearch-security/tools/wazuh-passwords-tool.sh
-
-
-export JAVA_HOME=/usr/share/wazuh-indexer/jdk
-export PATH=$PATH:$JAVA_HOME/bin
-
-bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/wazuh-passwords-tool.sh -u admin -p "N0str0m0-A1i3n-Breach*99"
