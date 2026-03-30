@@ -1,3 +1,28 @@
+Despliegue de Wazuh SIEM (Single-Node) vía Portainer
+Objetivo: Desplegar una instancia funcional de Wazuh (Manager, Indexer y Dashboard) utilizando contenedores, garantizando la persistencia de datos y la integridad de los certificados SSL/TLS.
+1. Preparación y Clonación del Repositorio
+El despliegue estándar de Docker mediante Portainer presenta un conflicto con las rutas relativas (./config). Al no ejecutarse el stack desde el directorio raíz del repositorio, los contenedores pierden el acceso a los certificados y archivos de configuración esenciales.
+Solución aplicada:
+•	Aplicando normativas FHS de Linux, preparamos el directorio oficial: /opt/wazuh.
+•	Clonación del repositorio oficial en el host local: git clone https://github.com/wazuh/wazuh-docker.git -b v4.14.4.
+2. Generación de Certificados
+Generación manual de certificados mediante el contenedor de utilidades. Nos ubicamos en la carpeta clonada y ejecutamos:
+•	docker compose -f generate-indexer-certs.yml run --rm generator.
+3. Refactorización del Archivo Compose
+Para solucionar el problema de las rutas, se realizó una refactorización del archivo Compose: Conversión de rutas relativas a rutas absolutas para asegurar que Docker Engine localice los volúmenes independientemente del contexto de ejecución de Portainer.
+•	En lugar de la ruta original del usuario /home/alphacentauri/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/..., se reemplazaron todas las rutas relativas de los certificados por la ruta absoluta recomendada: /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/...
+•	Estos cambios se aplicaron en los 3 contenedores: manager, indexer y dashboard.
+4. Despliegue en el Web Editor de Portainer
+•	Se copió el archivo docker-compose.yml modificado y se pegó en la pestaña Web editor de un nuevo Stack en Portainer.
+•	Al hacer la instalación por medio del editor web de Portainer podemos observar cómo el control que tenemos es total.
+5. Análisis de Seguridad e Instalación del Agente
+•	Protocolos: El tráfico entre agentes y manager viaja por el puerto 1514 cifrado. Se recomienda exponer solo el puerto 443 (Dashboard) al exterior.
+•	Conexión del Endpoint (Windows):
+1.	Abrir consola PowerShell como Administrador en el equipo cliente.
+2.	Ejecutar el comando de instalación (generado desde el Dashboard web de wazuh) para descargar el archivo .msi y enlazarlo a la IP del Manager.
+3.	Arrancar el servicio en segundo plano ejecutando: Start-Service -Name "WazuhSvc" o NET START WazuhSvc.
+
+
 # Wazuh App Copyright (C) 2017, Wazuh Inc. (License GPLv2)
 services:
   wazuh.manager:
