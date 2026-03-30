@@ -2,3 +2,6 @@ sed -i 's|hash:.*|hash: "'$2y$12$xjig3ulTx9VwZJ1tzVdoZ.T7pstoWicks9db5FYqluqLFef
 
 
 cat config/opensearch-security/internal_users.yml | grep -A 1 "admin:"
+
+
+bash plugins/opensearch-security/tools/securityadmin.sh -cd config/opensearch-security/ -icl -nhnv -cacert config/certs/root-ca.pem -cert config/certs/admin.pem -key config/certs/admin-key.pem
