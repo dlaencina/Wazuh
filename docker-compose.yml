@@ -1,7 +1,9 @@
-sed -i 's|hash:.*|hash: "'$2y$12$xjig3ulTx9VwZJ1tzVdoZ.T7pstoWicks9db5FYqluqLFefMyAOYu'"|' config/opensearch-security/internal_users.yml
+cat config/opensearch-security/internal_users.yml | sed 's|hash:.*|hash: "'$2y$12$xjig3ulTx9VwZJ1tzVdoZ.T7pstoWicks9db5FYqluqLFefMyAOYu'"|' > internal_users_nuevo.yml
 
 
-cat config/opensearch-security/internal_users.yml | grep -A 1 "admin:"
+cp -f internal_users_nuevo.yml config/opensearch-security/internal_users.yml
 
 
 bash plugins/opensearch-security/tools/securityadmin.sh -cd config/opensearch-security/ -icl -nhnv -cacert config/certs/root-ca.pem -cert config/certs/admin.pem -key config/certs/admin-key.pem
+
+
