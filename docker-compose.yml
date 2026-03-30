@@ -2,3 +2,6 @@ export JAVA_HOME=/usr/share/wazuh-indexer/jdk
 
 
 bash /usr/share/wazuh-indexer/plugins/opensearch-security/tools/wazuh-passwords-tool.sh -u admin -p "N0str0m0-A1i3n-Breach*99"
+
+
+chmod +x /usr/share/wazuh-indexer/plugins/opensearch-security/tools/wazuh-passwords-tool.sh
