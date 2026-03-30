@@ -1,10 +1,1 @@
-docker stop $(docker ps -a -q --filter name=wazuh)
-docker rm $(docker ps -a -q --filter name=wazuh)
-
-
-docker network rm $(docker network ls -q --filter name=wazuh)
-docker volume rm $(docker volume ls -q | grep wazuh)
-
-cd /opt/wazuh/single-node/
-sudo rm -rf config/certs
 
