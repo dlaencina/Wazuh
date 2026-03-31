@@ -1,3 +1,5 @@
+Get-Package -Name "Wazuh Agent" | Uninstall-Package
+
 sudo nano /opt/wazuh/single-node/config/wazuh_indexer/internal_users.yml
 
 docker exec -it wazusiem-wazuh.indexer-1 bash -c "export OPENSEARCH_JAVA_HOME=/usr/share/wazuh-indexer/jdk && bash plugins/opensearch-security/tools/securityadmin.sh -cd config/opensearch-security/ -icl -nhnv -cacert config/certs/root-ca.pem -cert config/certs/admin.pem -key config/certs/admin-key.pem"
