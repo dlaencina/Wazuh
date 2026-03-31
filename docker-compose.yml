@@ -1,3 +1,9 @@
+docker exec -it wazuhsiem-wazuh.indexer-1 find / -name "internal_users.yml"
+
+
+
+
+
 Get-Package -Name "Wazuh Agent" | Uninstall-Package
 
 
