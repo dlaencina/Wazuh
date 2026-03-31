@@ -1,3 +1,5 @@
+scp alphacentauri@ADDNIXPSMKLI001:/home/alphacentauri/root-ca.pem C:\Users\DAVID.LAENCINA\Desktop\
+
 docker exec -it wazuhsiem-wazuh.indexer-1 find / -name "internal_users.yml"
 
 
