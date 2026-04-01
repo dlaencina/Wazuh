@@ -81,7 +81,7 @@ sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xm
   </rule>
 
   <rule id="100013" level="11">
-    <if_group>sysmon_event22</if_group>
+    <if_sid>61654</if_sid>
     <field name="win.eventdata.query" type="pcre2">(?i)getscreen\.me|nextcloud\.com|anydesk\.com|teamviewer\.com</field>
     <description>SOC - Exfiltración/C2: Consulta DNS a dominio de control remoto o almacenamiento externo.</description>
     <mitre><id>T1071.001</id></mitre>
@@ -108,7 +108,7 @@ sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xm
     <mitre><id>T1562.001</id></mitre>
   </rule>
 
-<rule id="100016" level="10" frequency="6" timeframe="120">
+  <rule id="100016" level="10" frequency="6" timeframe="120">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
     <description>SOC - Acceso: Múltiples fallos de inicio de sesión desde la misma IP (Posible Fuerza Bruta).</description>
@@ -123,7 +123,7 @@ sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xm
   </rule>
 
   <rule id="100019" level="12" frequency="25" timeframe="30">
-    <if_group>sysmon_event3</if_group>
+    <if_matched_sid>61605</if_matched_sid>
     <same_field>win.eventdata.sourceIp</same_field>
     <different_field>win.eventdata.destinationPort</different_field>
     <description>SOC - Red: Escaneo de puertos rápido detectado (Posible Nmap).</description>
