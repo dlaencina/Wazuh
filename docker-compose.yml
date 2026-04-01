@@ -108,20 +108,26 @@ sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xm
     <mitre><id>T1562.001</id></mitre>
   </rule>
 
-  <rule id="100016" level="11">
+<rule id="100016" level="10" frequency="6" timeframe="120">
     <if_matched_sid>60122</if_matched_sid>
-    <same_source_ip />
-    <frequency>6</frequency>
-    <timeframe>120</timeframe>
+    <same_field>win.eventdata.ipAddress</same_field>
     <description>SOC - Acceso: Múltiples fallos de inicio de sesión desde la misma IP (Posible Fuerza Bruta).</description>
     <mitre><id>T1110.001</id></mitre>
   </rule>
 
-  <rule id="100017" level="11">
+  <rule id="100017" level="9">
     <if_sid>60106</if_sid>
     <time>20:00 - 07:00</time>
     <description>SOC - Acceso: Inicio de sesión exitoso fuera de horario laboral.</description>
     <mitre><id>T1078</id></mitre>
+  </rule>
+
+  <rule id="100019" level="12" frequency="25" timeframe="30">
+    <if_group>sysmon_event3</if_group>
+    <same_field>win.eventdata.sourceIp</same_field>
+    <different_field>win.eventdata.destinationPort</different_field>
+    <description>SOC - Red: Escaneo de puertos rápido detectado (Posible Nmap).</description>
+    <mitre><id>T1046</id></mitre>
   </rule>
 
   <rule id="100018" level="11">
