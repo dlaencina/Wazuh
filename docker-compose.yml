@@ -1,131 +1,118 @@
-scp alphacentauri@ADDNIXPSMKLI001:/home/alphacentauri/root-ca.pem C:\Users\DAVID.LAENCINA\Desktop\
-
-docker exec -it wazuhsiem-wazuh.indexer-1 find / -name "internal_users.yml"
+sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml
 
 
+<group name="local, custom_rules, windows, sysmon,">
+
+  <rule id="100001" level="8">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)whoami|systeminfo|nltest|netstat -ano</field>
+    <description>SOC - Reconocimiento: Comandos de enumeración de sistema detectados.</description>
+    <mitre><id>T1033</id></mitre>
+  </rule>
+
+  <rule id="100004" level="10">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)Invoke-WebRequest|Net.WebClient|IEX\s*\(|Invoke-Expression</field>
+    <description>SOC - Ejecución: PowerShell descargando y ejecutando código remoto en memoria.</description>
+    <mitre><id>T1059.001</id></mitre>
+  </rule>
+
+  <rule id="100006" level="9">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)schtasks.*\/create</field>
+    <description>SOC - Persistencia: Creación de tarea programada desde terminal.</description>
+    <mitre><id>T1053.005</id></mitre>
+  </rule>
+
+  <rule id="100012" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.image">(?i)AppData\\\\Local\\\\.*\.exe|AppData\\\\Roaming\\\\.*\.exe</field>
+    <description>SOC - Ejecución: Proceso sospechoso iniciado desde rutas temporales de usuario.</description>
+    <mitre><id>T1059</id></mitre>
+  </rule>
+
+  <rule id="100003" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)DisableRealtimeMonitoring</field>
+    <description>SOC - Evasión: Intento de desactivar la protección en tiempo real de Defender.</description>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="100008" level="11">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)regsvr32.*\/i:http.*scrobj.dll</field>
+    <description>SOC - Evasión: Bypass de ejecución usando Regsvr32.</description>
+    <mitre><id>T1218.010</id></mitre>
+  </rule>
+
+  <rule id="100011" level="10">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)cacls\.exe|icacls\.exe</field>
+    <description>SOC - Evasión: Modificación de permisos de archivos usando cacls/icacls.</description>
+    <mitre><id>T1222.001</id></mitre>
+  </rule>
+
+  <rule id="100005" level="13">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)procdump.*lsass|comsvcs.dll.*MiniDump</field>
+    <description>SOC - Robo de Credenciales: Intento de volcado de memoria LSASS detectado.</description>
+    <mitre><id>T1003.001</id></mitre>
+  </rule>
+
+  <rule id="100014" level="13">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)reg\s+save\s+HKLM\\(SAM|SECURITY|SYSTEM)</field>
+    <description>SOC - Robo de Credenciales: Intento de exportar colmenas del registro (SAM/SECURITY).</description>
+    <mitre><id>T1003.002</id></mitre>
+  </rule>
+
+  <rule id="100009" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)net.*localgroup administrators.*\/add</field>
+    <description>SOC - Escalada: Usuario añadido al grupo de Administradores locales.</description>
+    <mitre><id>T1098</id></mitre>
+  </rule>
+
+  <rule id="100007" level="10">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)wmic.*process call create</field>
+    <description>SOC - Movimiento Lateral: Ejecución remota de procesos mediante WMI.</description>
+    <mitre><id>T1047</id></mitre>
+  </rule>
+
+  <rule id="100013" level="11">
+    <if_group>sysmon_event22</if_group>
+    <field name="win.eventdata.query">(?i)getscreen\.me|nextcloud\.com|anydesk\.com|teamviewer\.com</field>
+    <description>SOC - Exfiltración/C2: Consulta DNS a dominio de control remoto o almacenamiento externo.</description>
+    <mitre><id>T1071.001</id></mitre>
+  </rule>
+
+  <rule id="100015" level="11">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)fDenyTSConnections.*0</field>
+    <description>SOC - Movimiento Lateral: Intento de habilitar Escritorio Remoto (RDP) vía registro.</description>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+  <rule id="100002" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)vssadmin.*delete shadows|wbadmin.*delete catalog|bcdedit.*recoveryenabled no</field>
+    <description>SOC - Impacto: Destrucción de copias de seguridad (Posible Ransomware).</description>
+    <mitre><id>T1490</id></mitre>
+  </rule>
+
+  <rule id="100010" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine">(?i)stop-service.*wazuhsvc|net stop wazuhsvc|fltmc unload sysmon</field>
+    <description>SOC - Evasión: Intento de detención del agente de seguridad (Sabotaje).</description>
+    <mitre><id>T1562.001</id></mitre>
+  </rule>
+
+</group>
 
 
+sudo docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-logtest
 
-Get-Package -Name "Wazuh Agent" | Uninstall-Package
-
-
-docker rmi wazuh/wazuh-indexer:4.14.4 wazuh/wazuh-manager:4.14.4 wazuh/wazuh-dashboard:4.14.4 -f
-
-sudo nano /opt/wazuh/single-node/config/wazuh_indexer/internal_users.yml
-
-docker exec -it wazuhsiem-wazuh.indexer-1 bash -c "export OPENSEARCH_JAVA_HOME=/usr/share/wazuh-indexer/jdk && bash plugins/opensearch-security/tools/securityadmin.sh -cd config/opensearch-security/ -icl -nhnv -cacert config/certs/root-ca.pem -cert config/certs/admin.pem -key config/certs/admin-key.pem"
+sudo docker exec wazuhsiem-wazuh.manager-1 systemctl restart wazuh-manager
 
 
-# Wazuh App Copyright (C) 2017, Wazuh Inc. (License GPLv2)
-services:
-  wazuh.manager:
-    image: wazuh/wazuh-manager:4.14.4
-    hostname: wazuh.manager
-    restart: always
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 655360
-        hard: 655360
-    ports:
-      - "1514:1514"
-      - "1515:1515"
-      - "514:514/udp"
-      - "55000:55000"
-    environment:
-      - INDEXER_URL="https://wazuh.indexer:9200"
-      - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
-      - FILEBEAT_SSL_VERIFICATION_MODE=full
-      - SSL_CERTIFICATE_AUTHORITIES=/etc/ssl/root-ca.pem
-      - SSL_CERTIFICATE=/etc/ssl/filebeat.pem
-      - SSL_KEY=/etc/ssl/filebeat.key
-      - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450r.*-
-    volumes:
-      - wazuh_api_configuration:/var/ossec/api/configuration
-      - wazuh_etc:/var/ossec/etc
-      - wazuh_logs:/var/ossec/logs
-      - wazuh_queue:/var/ossec/queue
-      - wazuh_var_multigroups:/var/ossec/var/multigroups
-      - wazuh_integrations:/var/ossec/integrations
-      - wazuh_active_response:/var/ossec/active-response/bin
-      - wazuh_agentless:/var/ossec/agentless
-      - wazuh_wodles:/var/ossec/wodles
-      - filebeat_etc:/etc/filebeat
-      - filebeat_var:/var/lib/filebeat
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/root-ca-manager.pem:/etc/ssl/root-ca.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/wazuh.manager.pem:/etc/ssl/filebeat.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key
-      - /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
-
-  wazuh.indexer:
-    image: wazuh/wazuh-indexer:4.14.4
-    hostname: wazuh.indexer
-    restart: always
-    ports:
-      - "9200:9200"
-    environment:
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-      nofile:
-        soft: 65536
-        hard: 65536
-    volumes:
-      - wazuh-indexer-data:/var/lib/wazuh-indexer
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-indexer/config/certs/root-ca.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.key
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/config/certs/wazuh.indexer.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/admin.pem:/usr/share/wazuh-indexer/config/certs/admin.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/admin-key.pem:/usr/share/wazuh-indexer/config/certs/admin-key.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer/wazuh.indexer.yml:/usr/share/wazuh-indexer/config/opensearch.yml
-      - /opt/wazuh/single-node/config/wazuh_indexer/internal_users.yml:/usr/share/wazuh-indexer/config/opensearch-security/internal_users.yml
-
-  wazuh.dashboard:
-    image: wazuh/wazuh-dashboard:4.14.4
-    hostname: wazuh.dashboard
-    restart: always
-    ports:
-      - 443:5601
-    environment:
-      - INDEXER_USERNAME=admin
-      - INDEXER_PASSWORD=SecretPassword
-      - WAZUH_API_URL=https://wazuh.manager
-      - DASHBOARD_USERNAME=kibanaserver
-      - DASHBOARD_PASSWORD=kibanaserver
-      - API_USERNAME=wazuh-wui
-      - API_PASSWORD=MyS3cr37P450r.*-
-    volumes:
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
-      - /opt/wazuh/single-node/config/wazuh_indexer_ssl_certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem
-      - /opt/wazuh/single-node/config/wazuh_dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
-      - /opt/wazuh/single-node/config/wazuh_dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
-      - wazuh-dashboard-config:/usr/share/wazuh-dashboard/data/wazuh/config
-      - wazuh-dashboard-custom:/usr/share/wazuh-dashboard/plugins/wazuh/public/assets/custom
-    depends_on:
-      - wazuh.indexer
-    links:
-      - wazuh.indexer:wazuh.indexer
-      - wazuh.manager:wazuh.manager
-
-volumes:
-  wazuh_api_configuration:
-  wazuh_etc:
-  wazuh_logs:
-  wazuh_queue:
-  wazuh_var_multigroups:
-  wazuh_integrations:
-  wazuh_active_response:
-  wazuh_agentless:
-  wazuh_wodles:
-  filebeat_etc:
-  filebeat_var:
-  wazuh-indexer-data:
-  wazuh-dashboard-config:
-  wazuh-dashboard-custom:
