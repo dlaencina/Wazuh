@@ -116,3 +116,8 @@ sudo docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-logtest
 sudo docker exec wazuhsiem-wazuh.manager-1 systemctl restart wazuh-manager
 
 
+sudo docker exec wazuhsiem-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rules/local_rules.xml
+
+sudo docker restart wazuhsiem-wazuh.manager-1
+
+sudo docker exec wazuhsiem-wazuh.manager-1 tail -n 30 /var/ossec/logs/ossec.log
