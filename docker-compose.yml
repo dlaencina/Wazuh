@@ -108,6 +108,29 @@ sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xm
     <mitre><id>T1562.001</id></mitre>
   </rule>
 
+  <rule id="100016" level="11">
+    <if_matched_sid>60122</if_matched_sid>
+    <same_source_ip />
+    <frequency>6</frequency>
+    <timeframe>120</timeframe>
+    <description>SOC - Acceso: Múltiples fallos de inicio de sesión desde la misma IP (Posible Fuerza Bruta).</description>
+    <mitre><id>T1110.001</id></mitre>
+  </rule>
+
+  <rule id="100017" level="11">
+    <if_sid>60106</if_sid>
+    <time>20:00 - 07:00</time>
+    <description>SOC - Acceso: Inicio de sesión exitoso fuera de horario laboral.</description>
+    <mitre><id>T1078</id></mitre>
+  </rule>
+
+  <rule id="100018" level="11">
+    <if_sid>60122</if_sid>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)Administrator|Administrador</field>
+    <description>SOC - Acceso: Fallo de login en cuenta crítica de Administrador.</description>
+    <mitre><id>T1110</id></mitre>
+  </rule>
+
 </group>
 
 sudo docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-logtest
@@ -120,3 +143,5 @@ sudo docker exec wazuhsiem-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rule
 sudo docker restart wazuhsiem-wazuh.manager-1
 
 sudo docker exec wazuhsiem-wazuh.manager-1 tail -n 30 /var/ossec/logs/ossec.log
+
+
