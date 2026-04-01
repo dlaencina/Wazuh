@@ -5,111 +5,110 @@ sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xm
 
   <rule id="100001" level="8">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)whoami|systeminfo|nltest|netstat -ano</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)whoami|systeminfo|nltest|netstat -ano</field>
     <description>SOC - Reconocimiento: Comandos de enumeración de sistema detectados.</description>
     <mitre><id>T1033</id></mitre>
   </rule>
 
   <rule id="100004" level="10">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)Invoke-WebRequest|Net.WebClient|IEX\s*\(|Invoke-Expression</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)Invoke-WebRequest|Net.WebClient|IEX\s*\(|Invoke-Expression</field>
     <description>SOC - Ejecución: PowerShell descargando y ejecutando código remoto en memoria.</description>
     <mitre><id>T1059.001</id></mitre>
   </rule>
 
   <rule id="100006" level="9">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)schtasks.*\/create</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)schtasks.*/create</field>
     <description>SOC - Persistencia: Creación de tarea programada desde terminal.</description>
     <mitre><id>T1053.005</id></mitre>
   </rule>
 
   <rule id="100012" level="12">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.image">(?i)AppData\\\\Local\\\\.*\.exe|AppData\\\\Roaming\\\\.*\.exe</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)AppData.*Local.*\.exe|AppData.*Roaming.*\.exe</field>
     <description>SOC - Ejecución: Proceso sospechoso iniciado desde rutas temporales de usuario.</description>
     <mitre><id>T1059</id></mitre>
   </rule>
 
   <rule id="100003" level="12">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)DisableRealtimeMonitoring</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)DisableRealtimeMonitoring</field>
     <description>SOC - Evasión: Intento de desactivar la protección en tiempo real de Defender.</description>
     <mitre><id>T1562.001</id></mitre>
   </rule>
 
   <rule id="100008" level="11">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)regsvr32.*\/i:http.*scrobj.dll</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)regsvr32.*/i:http.*scrobj\.dll</field>
     <description>SOC - Evasión: Bypass de ejecución usando Regsvr32.</description>
     <mitre><id>T1218.010</id></mitre>
   </rule>
 
   <rule id="100011" level="10">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)cacls\.exe|icacls\.exe</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)cacls\.exe|icacls\.exe</field>
     <description>SOC - Evasión: Modificación de permisos de archivos usando cacls/icacls.</description>
     <mitre><id>T1222.001</id></mitre>
   </rule>
 
   <rule id="100005" level="13">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)procdump.*lsass|comsvcs.dll.*MiniDump</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)procdump.*lsass|comsvcs\.dll.*MiniDump</field>
     <description>SOC - Robo de Credenciales: Intento de volcado de memoria LSASS detectado.</description>
     <mitre><id>T1003.001</id></mitre>
   </rule>
 
   <rule id="100014" level="13">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)reg\s+save\s+HKLM\\(SAM|SECURITY|SYSTEM)</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)reg\s+save\s+HKLM.*(SAM|SECURITY|SYSTEM)</field>
     <description>SOC - Robo de Credenciales: Intento de exportar colmenas del registro (SAM/SECURITY).</description>
     <mitre><id>T1003.002</id></mitre>
   </rule>
 
   <rule id="100009" level="12">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)net.*localgroup administrators.*\/add</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)net.*localgroup administrators.*/add</field>
     <description>SOC - Escalada: Usuario añadido al grupo de Administradores locales.</description>
     <mitre><id>T1098</id></mitre>
   </rule>
 
   <rule id="100007" level="10">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)wmic.*process call create</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)wmic.*process call create</field>
     <description>SOC - Movimiento Lateral: Ejecución remota de procesos mediante WMI.</description>
     <mitre><id>T1047</id></mitre>
   </rule>
 
   <rule id="100013" level="11">
     <if_group>sysmon_event22</if_group>
-    <field name="win.eventdata.query">(?i)getscreen\.me|nextcloud\.com|anydesk\.com|teamviewer\.com</field>
+    <field name="win.eventdata.query" type="pcre2">(?i)getscreen\.me|nextcloud\.com|anydesk\.com|teamviewer\.com</field>
     <description>SOC - Exfiltración/C2: Consulta DNS a dominio de control remoto o almacenamiento externo.</description>
     <mitre><id>T1071.001</id></mitre>
   </rule>
 
   <rule id="100015" level="11">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)fDenyTSConnections.*0</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)fDenyTSConnections.*0</field>
     <description>SOC - Movimiento Lateral: Intento de habilitar Escritorio Remoto (RDP) vía registro.</description>
     <mitre><id>T1562.001</id></mitre>
   </rule>
 
   <rule id="100002" level="12">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)vssadmin.*delete shadows|wbadmin.*delete catalog|bcdedit.*recoveryenabled no</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)vssadmin.*delete shadows|wbadmin.*delete catalog|bcdedit.*recoveryenabled no</field>
     <description>SOC - Impacto: Destrucción de copias de seguridad (Posible Ransomware).</description>
     <mitre><id>T1490</id></mitre>
   </rule>
 
   <rule id="100010" level="12">
     <if_group>sysmon_event1</if_group>
-    <field name="win.eventdata.commandLine">(?i)stop-service.*wazuhsvc|net stop wazuhsvc|fltmc unload sysmon</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)stop-service.*wazuhsvc|net stop wazuhsvc|fltmc unload sysmon</field>
     <description>SOC - Evasión: Intento de detención del agente de seguridad (Sabotaje).</description>
     <mitre><id>T1562.001</id></mitre>
   </rule>
 
 </group>
-
 
 sudo docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-logtest
 
