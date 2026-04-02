@@ -4,6 +4,8 @@ docker exec -it wazuhsiem-wazuh.manager-1 cat /var/log/suricata/eve.json | head 
 
 docker exec -it wazuhsiem-wazuh.manager-1 grep "suricata" /var/ossec/logs/ossec.log
 
+docker exec -it wazuhsiem-wazuh.manager-1 grep -A 3 "eve.json" /var/ossec/etc/ossec.conf
+
 <group name="local, custom_rules, windows, sysmon, security, system">
 
   <!-- ============================================================ -->
