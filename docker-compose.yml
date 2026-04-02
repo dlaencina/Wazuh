@@ -1,5 +1,6 @@
 sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml
 
+docker exec -it wazuhsiem-wazuh.manager-1 cat /var/log/suricata/eve.json | head -n 2
 
 <group name="local, custom_rules, windows, sysmon, security, system">
 
