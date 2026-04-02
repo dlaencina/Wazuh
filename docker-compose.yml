@@ -6,6 +6,10 @@ docker exec -it wazuhsiem-wazuh.manager-1 grep "suricata" /var/ossec/logs/ossec.
 
 docker exec -it wazuhsiem-wazuh.manager-1 grep -A 3 "eve.json" /var/ossec/etc/ossec.conf
 
+docker cp /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf wazuhsiem-wazuh.manager-1:/var/ossec/etc/ossec.conf
+
+docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
+
 <group name="local, custom_rules, windows, sysmon, security, system">
 
   <!-- ============================================================ -->
