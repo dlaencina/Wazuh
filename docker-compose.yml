@@ -325,15 +325,15 @@ sudo docker exec wazuhsiem-wazuh.manager-1 tail -n 30 /var/ossec/logs/ossec.log
 <Sysmon schemaversion="4.90">
   <EventFiltering>
 
-    <RuleGroup name="" groupRelation="or">
+    <RuleGroup name="Filtrado Seguro DLLs" groupRelation="and">
       <ImageLoad onmatch="exclude">
         <ImageLoaded condition="begin with">C:\Windows\System32</ImageLoaded>
-        <ImageLoaded condition="begin with">C:\Windows\SysWOW64</ImageLoaded>
-        <ImageLoaded condition="begin with">C:\Program Files</ImageLoaded>
+        <Signature condition="contains">Microsoft</Signature>
+        <SignatureStatus condition="is">Valid</SignatureStatus>
       </ImageLoad>
     </RuleGroup>
 
-    <RuleGroup name="" groupRelation="or">
+    <RuleGroup name="Persistencia Registro" groupRelation="or">
       <RegistryEvent onmatch="include">
         <TargetObject condition="contains">CurrentVersion\Run</TargetObject>
         <TargetObject condition="contains">SystemCertificates</TargetObject>
@@ -345,34 +345,34 @@ sudo docker exec wazuhsiem-wazuh.manager-1 tail -n 30 /var/ossec/logs/ossec.log
 
 c:\Windows\sysmon64.exe -c C:\Windows\sysmonconfig.xml
 
-Despliegue e Integración de Sysmon con Wazuh
+Documentación Técnica: Despliegue e Integración de Sysmon con Wazuh
 Fase 1: Preparación del Motor y Filtros
 Descarga: Se obtuvo el binario oficial Sysmon64.exe desde la suite Sysinternals de Microsoft.
 
-Creación de Reglas (Tuning): Se creó un archivo de configuración personalizado (sysmon_rules.xml) basado en XML.
+Creación de Reglas (Tuning): Se creó un archivo de configuración personalizado en C:\Windows\sysmonconfig.xml.
 
-Objetivo del archivo: Evitar la fatiga de alertas mediante la etiqueta <EventFiltering>.
+Objetivo del archivo: Evitar la fatiga de alertas bloqueando el ruido legítimo, pero manteniendo una visibilidad estricta frente a técnicas de evasión (como DLL Hijacking).
 
-Exclusión (exclude): Se configuró para ignorar la carga de librerías (ImageLoad) provenientes de rutas nativas y seguras como C:\Windows\System32.
+Exclusión Condicionada (exclude con lógica and): Se configuró para ignorar la carga de librerías (ImageLoad) en rutas nativas como C:\Windows\System32, únicamente si el archivo posee una firma criptográfica válida (Valid) perteneciente a Microsoft. Si un malware intenta ejecutar una DLL maliciosa camuflada en esa carpeta, la validación fallará y el evento será registrado.
 
-Inclusión (include): Se instruyó a Sysmon para vigilar modificaciones en el registro de Windows (RegistryEvent), concretamente en claves utilizadas por el malware para ganar persistencia (ej. CurrentVersion\Run).
+Inclusión (include con lógica or): Se instruyó a Sysmon para vigilar modificaciones en el registro de Windows (RegistryEvent), concretamente en claves utilizadas por los atacantes para ganar persistencia (ej. CurrentVersion\Run).
 
 Fase 2: Instalación del Servicio en Windows
 Se procedió a la instalación del servicio a nivel de sistema operativo para iniciar la recolección de telemetría avanzada.
 
 Se abrió una consola de PowerShell con privilegios de Administrador.
 
-Se navegó hasta el directorio donde se encontraban los binarios.
+Se navegó hasta el directorio donde se descargó el binario Sysmon64.exe.
 
 Se ejecutó el siguiente comando de instalación:
 
 PowerShell
-.\Sysmon64.exe -accepteula -i sysmon_rules.xml
+.\Sysmon64.exe -accepteula -i C:\Windows\sysmonconfig.xml
 Explicación del comando: * .\Sysmon64.exe: Llama al ejecutable principal.
 
--accepteula: Fuerza la aceptación silenciosa de los términos de licencia de Microsoft (necesario para instalaciones desatendidas o por consola).
+-accepteula: Fuerza la aceptación silenciosa de los términos de licencia de Microsoft (necesario para instalaciones por consola).
 
--i sysmon_rules.xml: Instala el servicio en el sistema (Install) y le inyecta directamente nuestro archivo de reglas de filtrado.
+-i C:\Windows\sysmonconfig.xml: Instala el servicio en el sistema y le inyecta la ruta exacta de la nueva directiva de filtrado seguro.
 
 Fase 3: Integración del Agente (Wazuh)
 Sysmon por sí solo no envía datos a la red; escribe sus eventos de forma local en el Visor de Eventos de Windows bajo la ruta Microsoft-Windows-Sysmon/Operational. Se configuró el agente de Wazuh para leer este canal.
@@ -392,7 +392,7 @@ Explicación de la configuración:
 
 <location>: Apunta exactamente a la ruta interna del Visor de Eventos donde Sysmon escribe sus hallazgos.
 
-<log_format>eventchannel</log_format>: Especifica que el formato a leer no es un archivo de texto plano, sino el formato estructurado nativo de los eventos de Windows moderno.
+<log_format>eventchannel</log_format>: Especifica que el formato a leer es el formato estructurado nativo de los eventos de Windows moderno.
 
 Fase 4: Aplicación y Despliegue
 Para que el agente de Wazuh comenzara a procesar esta nueva directiva de recolección de logs, se reinició su servicio.
@@ -401,4 +401,7 @@ Se ejecutó el siguiente comando en PowerShell (como Administrador):
 
 PowerShell
 Restart-Service Wazuh
-Explicación del comando: Detiene e inicia el servicio de Wazuh de forma limpia, obligándole a releer el archivo ossec.conf y a abrir la "tubería" de comunicación con el canal de Sysmon, enviando a partir de ese momento la telemetría avanzada al Manager.
+Explicación del comando: Detiene e inicia el servicio de Wazuh de forma limpia. Esto obliga al agente a releer el archivo ossec.conf y a abrir la comunicación con el canal de Sysmon, enviando a partir de ese momento la telemetría validada al Manager.
+
+c:\Windows\sysmon64.exe -c C:\Windows\sysmonconfig.xml
+
