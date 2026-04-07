@@ -319,62 +319,29 @@ sudo docker exec wazuhsiem-wazuh.manager-1 chown wazuh:wazuh /var/ossec/etc/rule
 
 sudo docker restart wazuhsiem-wazuh.manager-1
 
-
-DOCUMENTACIÓN DE REGLAS PERSONALIZADAS - WAZUH SOC
-Regla 100001 (Nivel 8): Reconocimiento de Sistema
-Monitorea la ejecución de comandos de enumeración inicial como 'whoami', 'systeminfo' o 'netstat'. Detecta a un intruso intentando identificar el nombre del equipo, privilegios del usuario o conexiones de red activas.
-
-Regla 100002 (Nivel 12): Borrado de Shadow Copies (Ransomware)
-Monitorea intentos de eliminar copias de seguridad mediante 'vssadmin', 'wbadmin' o desactivar el menú de recuperación de Windows. Es un indicador crítico de un ataque de Ransomware en fase de destrucción de datos.
-
-Regla 100003 (Nivel 12): Sabotaje de Antivirus
-Monitorea comandos de PowerShell diseñados para desactivar la protección en tiempo real de Windows Defender. Detecta la fase de evasión de defensas del atacante.
-
-Regla 100004 (Nivel 10): Ejecución Fileless (PowerShell)
-Monitorea la descarga y ejecución de scripts directamente en la memoria RAM (sin tocar disco) mediante 'Invoke-WebRequest' o 'IEX'. Detecta malware avanzado que intenta evadir firmas de antivirus tradicionales.
-
-Regla 100005 (Nivel 13): Volcado de Memoria LSASS
-Monitorea el uso de herramientas como 'procdump' o librerías del sistema para volcar la memoria del proceso LSASS. Detecta el robo de credenciales y hashes de contraseñas de usuarios con sesión iniciada.
-
-Regla 100006 (Nivel 9): Persistencia vía Tareas Programadas
-Monitorea la creación de nuevas tareas en el programador de Windows desde la línea de comandos. Detecta intentos de establecer una puerta trasera que se ejecute automáticamente tras un reinicio.
-
-Regla 100007 (Nivel 10): Movimiento Lateral vía WMI
-Monitorea el uso de 'wmic' para crear procesos de forma remota. Detecta a un atacante intentando saltar de un equipo comprometido a otro servidor de la red interna.
-
-Regla 100008 (Nivel 11): Evasión Squiblydoo (Regsvr32)
-Monitorea el uso sospechoso de 'regsvr32.exe' apuntando a objetos COM remotos. Detecta una técnica avanzada para ejecutar código malicioso saltándose las listas blancas de aplicaciones (AppLocker).
-
-Regla 100009 (Nivel 12): Escalada de Privilegios
-Monitorea la adición forzosa de usuarios al grupo de 'Administradores' locales. Detecta el momento exacto en que un atacante intenta obtener control total sobre el endpoint.
-
-Regla 100010 (Nivel 12): Detención del Agente de Seguridad
-Monitorea intentos de parar el servicio de Wazuh o descargar el controlador de Sysmon. Detecta sabotaje directo contra el sistema de monitorización para dejar al SOC ciego.
-
-Regla 100011 (Nivel 10): Modificación de Permisos (Cacls)
-Monitorea el uso de 'cacls' o 'icacls' para alterar permisos de archivos. Detecta intentos de ocultar archivos maliciosos o bloquear el acceso a herramientas de administración.
-
-Regla 100012 (Nivel 12): Ejecución desde AppData (Malware)
-Monitorea cualquier ejecutable que arranque desde las carpetas temporales del usuario. Es una regla de alta fidelidad para detectar malware que no tiene privilegios para instalarse en 'Program Files'.
-
-Regla 100013 (Nivel 11): Conexión a Herramientas de Control Remoto
-Monitorea consultas DNS hacia dominios como 'getscreen.me' o 'anydesk'. Detecta Shadow IT (uso de software no autorizado) o canales de Mando y Control (C2) de un atacante.
-
-Regla 100014 (Nivel 13): Robo de Colmenas del Registro
-Monitorea intentos de exportar las bases de datos SAM o SECURITY del registro de Windows. Detecta el robo de la base de datos de contraseñas locales para su posterior crackeo offline.
-
-Regla 100015 (Nivel 11): Activación Remota de RDP
-Monitorea modificaciones en el registro para habilitar el Escritorio Remoto (RDP). Detecta a un atacante preparando el terreno para un acceso visual y persistente al servidor.
-
-Regla 100016 (Nivel 10): Fuerza Bruta por IP
-Monitorea si una misma dirección IP falla la contraseña más de 6 veces en un corto periodo de tiempo. Detecta intentos automatizados de intrusión mediante diccionarios de claves.
-
-Regla 100017 (Nivel 9): Inicio de Sesión Anómalo (Horario)
-Monitorea accesos exitosos al sistema fuera del horario laboral estándar (20:00 a 07:00). Detecta actividad sospechosa cuando la empresa debería estar inactiva.
-
-Regla 100018 (Nivel 10): Ataque Dirigido a Administrador
-Monitorea fallos de autenticación dirigidos específicamente a la cuenta 'Administrator' o 'Administrador'. Detecta ataques de fuerza bruta contra el objetivo de mayor valor en la red.
-
 sudo docker exec wazuhsiem-wazuh.manager-1 tail -n 30 /var/ossec/logs/ossec.log
 
+
+<Sysmon schemaversion="4.90">
+  <EventFiltering>
+
+    <RuleGroup name="" groupRelation="or">
+      <ImageLoad onmatch="exclude">
+        <ImageLoaded condition="begin with">C:\Windows\System32</ImageLoaded>
+        <ImageLoaded condition="begin with">C:\Windows\SysWOW64</ImageLoaded>
+        <ImageLoaded condition="begin with">C:\Program Files</ImageLoaded>
+      </ImageLoad>
+    </RuleGroup>
+
+    <RuleGroup name="" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="contains">CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">SystemCertificates</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
+
+  </EventFiltering>
+</Sysmon>
+
+c:\Windows\sysmon64.exe -c C:\Windows\sysmonconfig.xml
 
