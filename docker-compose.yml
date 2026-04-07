@@ -148,6 +148,13 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1574.001</id></mitre>
   </rule>
 
+  <rule id="100036" level="14">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)wevtutil\s+cl|wevtutil\s+clear-log|Clear-EventLog|Remove-EventLog</field>
+    <description>SOC - Evasión CRÍTICA: Intento de borrado de los registros de eventos de Windows.</description>
+    <mitre><id>T1070.001</id></mitre>
+  </rule>
+
   <!-- ============================================================ -->
   <!-- ACCESO A CREDENCIALES                                         -->
   <!-- ============================================================ -->
@@ -239,10 +246,17 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   <!-- ACCESO / AUTENTICACIÓN                                        -->
   <!-- ============================================================ -->
 
-  <rule id="100016" level="10" frequency="4" timeframe="60">
+  <rule id="100016" level="12" frequency="5" timeframe="30">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
-    <description>SOC - Acceso: Múltiples fallos de login desde la misma IP (posible fuerza bruta).</description>
+    <description>SOC - Acceso: Fuerza bruta rápida (5 fallos en 30s desde misma IP).</description>
+    <mitre><id>T1110.001</id></mitre>
+  </rule>
+
+  <rule id="100043" level="11" frequency="5" timeframe="300">
+    <if_matched_sid>60122</if_matched_sid>
+    <same_field>win.eventdata.ipAddress</same_field>
+    <description>SOC - Acceso: Fuerza bruta lenta o password spraying (5 fallos en 5 min).</description>
     <mitre><id>T1110.001</id></mitre>
   </rule>
 
@@ -255,9 +269,53 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
 
   <rule id="100018" level="11">
     <if_sid>60122</if_sid>
-    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^(Administrator|Administrador|Admin|root)$</field>
-    <description>SOC - Acceso: Fallo de login en cuenta administrativa crítica.</description>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^(Administrator|Administrador|Admin|root|guest|invitado|backup|svc_.*|service.*)$</field>
+    <description>SOC - Acceso: Fallo de login en cuenta crítica o de servicio.</description>
     <mitre><id>T1110</id></mitre>
+  </rule>
+
+  <rule id="100044" level="13">
+    <if_sid>60204</if_sid>
+    <description>SOC - Acceso: Cuenta bloqueada por exceso de intentos fallidos.</description>
+    <mitre><id>T1110.001</id></mitre>
+  </rule>
+
+  <rule id="100037" level="12" frequency="5" timeframe="120">
+    <if_matched_sid>60122</if_matched_sid>
+    <same_field>win.eventdata.targetUserName</same_field>
+    <description>SOC - Acceso: Múltiples IPs atacando la misma cuenta (Password Spraying).</description>
+    <mitre><id>T1110.003</id></mitre>
+  </rule>
+
+  <rule id="100038" level="14" frequency="3" timeframe="60">
+    <if_matched_sid>60122</if_matched_sid>
+    <if_sid>60106</if_sid>
+    <same_field>win.eventdata.targetUserName</same_field>
+    <description>SOC - CRÍTICO: Login exitoso tras múltiples fallos (posible fuerza bruta exitosa).</description>
+    <mitre><id>T1110</id></mitre>
+  </rule>
+
+  <rule id="100039" level="10">
+    <if_sid>60106</if_sid>
+    <field name="win.eventdata.ipAddress" type="pcre2">^(?!10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.).*</field>
+    <description>SOC - Acceso: Login exitoso desde IP pública (fuera de red interna).</description>
+    <mitre><id>T1078</id></mitre>
+  </rule>
+
+  <rule id="100041" level="12">
+    <if_sid>60106</if_sid>
+    <field name="win.eventdata.logonType">^10$</field>
+    <time>20:00 - 07:00</time>
+    <description>SOC - Acceso: Sesión RDP iniciada fuera de horario laboral.</description>
+    <mitre><id>T1021.001</id></mitre>
+  </rule>
+
+  <rule id="100042" level="11" frequency="5" timeframe="60">
+    <if_matched_sid>60122</if_matched_sid>
+    <same_field>win.eventdata.ipAddress</same_field>
+    <different_field>win.eventdata.targetUserName</different_field>
+    <description>SOC - Reconocimiento: Misma IP probando múltiples cuentas distintas (enumeración de usuarios).</description>
+    <mitre><id>T1087.002</id></mitre>
   </rule>
 
   <!-- ============================================================ -->
