@@ -283,6 +283,31 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1110.001</id></mitre>
   </rule>
 
+  <!-- ============================================================ -->
+  <!-- CERTIFICADOS                                                  -->
+  <!-- ============================================================ -->
+
+  <rule id="100033" level="12">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)certutil\s+.*(-(delstore|addstore|importpfx|encodehex))|certmgr\s+.*/del</field>
+    <description>SOC - Certificados: Manipulación o eliminación de certificados mediante certutil/certmgr.</description>
+    <mitre><id>T1553.004</id></mitre>
+  </rule>
+
+  <rule id="100034" level="11">
+    <if_group>sysmon_event13</if_group>
+    <field name="win.eventdata.targetObject" type="pcre2">(?i)\\SOFTWARE\\Microsoft\\SystemCertificates|\\SOFTWARE\\Policies\\Microsoft\\SystemCertificates</field>
+    <description>SOC - Certificados: Modificación en el almacén de certificados del sistema vía registro.</description>
+    <mitre><id>T1553.004</id></mitre>
+  </rule>
+
+  <rule id="100035" level="13">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)certutil\s+.*(http|ftp).*\.(cer|crt|pfx|p12)</field>
+    <description>SOC - Certificados: Descarga de certificado desde URL externa (posible instalación de CA falsa).</description>
+    <mitre><id>T1553.004</id></mitre>
+  </rule>
+
 </group>
 
 sudo docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-logtest
