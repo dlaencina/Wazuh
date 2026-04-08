@@ -214,38 +214,6 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   </rule>
 
   <!-- ============================================================ -->
-  <!-- EXFILTRACIÓN Y C2                                             -->
-  <!-- ============================================================ -->
-
-  <rule id="100013" level="11">
-    <if_sid>61654</if_sid>
-    <field name="win.eventdata.query" type="pcre2">(?i)getscreen\.me|nextcloud\.com|anydesk\.com|teamviewer\.com|ngrok\.io|pagekite\.me|serveo\.net</field>
-    <description>SOC - C2/Exfiltración: Consulta DNS a dominio de acceso remoto o túnel conocido.</description>
-    <mitre><id>T1071.001</id></mitre>
-  </rule>
-
-  <rule id="100031" level="11">
-    <if_group>sysmon_event3</if_group>
-    <field name="win.eventdata.destinationPort" type="pcre2">^(4444|1337|8080|8443|9001|31337)$</field>
-    <description>SOC - C2: Conexión saliente a puerto asociado a frameworks de ataque (Metasploit/Cobalt Strike).</description>
-    <mitre><id>T1571</id></mitre>
-  </rule>
-
-  <rule id="100047" level="12">
-    <if_sid>86601</if_sid>
-    <field name="data.alert.category" type="pcre2">(?i)Trojan|Exploit|Malware|Command and Control|Coin Mining|Targeted Malicious Activity</field>
-    <description>SOC - Exfiltración/Malware: Suricata detectó tráfico de red malicioso.</description>
-    <mitre><id>T1048</id></mitre>
-  </rule>
-
-  <rule id="100048" level="13">
-    <if_sid>86601</if_sid>
-    <field name="data.alert.severity">^1$</field>
-    <description>SOC - CRÍTICO: Suricata alerta de severidad máxima detectada en la red.</description>
-    <mitre><id>T1046</id></mitre>
-  </rule>
-
-  <!-- ============================================================ -->
   <!-- IMPACTO                                                       -->
   <!-- ============================================================ -->
 
@@ -304,7 +272,7 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   <rule id="100046" level="13" frequency="3" timeframe="60">
     <if_matched_sid>60106</if_matched_sid>
     <same_field>win.eventdata.targetUserName</same_field>
-    <different_field>win.system.computer</different_field>
+    <different_field>agent.id</different_field>
     <description>SOC - Acceso CRÍTICO: Mismo usuario autenticado en múltiples equipos simultáneamente.</description>
     <mitre><id>T1078</id></mitre>
   </rule>
@@ -396,6 +364,27 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   </rule>
 
 </group>
+
+sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_suricata_rules.xml
+
+<group name="local, suricata, ids">
+
+  <rule id="100047" level="12">
+    <if_sid>86601</if_sid>
+    <field name="data.alert.category" type="pcre2">(?i)Trojan|Exploit|Malware|Command and Control|Coin Mining|Targeted Malicious Activity</field>
+    <description>SOC - Exfiltración/Malware: Suricata detectó tráfico de red malicioso.</description>
+    <mitre><id>T1048</id></mitre>
+  </rule>
+
+  <rule id="100048" level="13">
+    <if_sid>86601</if_sid>
+    <field name="data.alert.severity">^1$</field>
+    <description>SOC - CRÍTICO: Suricata alerta de severidad máxima detectada en la red.</description>
+    <mitre><id>T1046</id></mitre>
+  </rule>
+
+</group>
+
 
 sudo docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-logtest
 
