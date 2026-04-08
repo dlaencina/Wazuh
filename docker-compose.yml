@@ -365,6 +365,8 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
 
 </group>
 
+docker exec -it wazuhsiem-wazuh.manager-1 grep -i "100047\|100048" /var/ossec/logs/ossec.log
+
 docker exec -it wazuhsiem-wazuh.manager-1 grep -i "error\|warning" /var/ossec/logs/ossec.log | tail -20
 
 docker exec -it wazuhsiem-wazuh.manager-1 grep -i "local_suricata\|local_rules" /var/ossec/logs/ossec.log
