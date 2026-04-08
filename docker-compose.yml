@@ -126,12 +126,15 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1562.001</id></mitre>
   </rule>
 
+  <!-- PENDIENTE: Ajustar cuando se tenga inventario de usuarios autorizados
+       para usar cacls/icacls. Añadir exclusión por usuario y/o IP origen.
   <rule id="100011" level="10">
     <if_group>sysmon_event1</if_group>
     <field name="win.eventdata.commandLine" type="pcre2">(?i)icacls\.exe|cacls\.exe|takeown\.exe</field>
     <description>SOC - Evasión: Modificación de permisos o propiedad de archivos.</description>
     <mitre><id>T1222.001</id></mitre>
   </rule>
+  -->
 
   <rule id="100015" level="11">
     <if_group>sysmon_event1</if_group>
@@ -198,19 +201,43 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1569.002</id></mitre>
   </rule>
 
+  <!-- PENDIENTE: Ajustar umbral cuando se conozca volumen real de
+       fallos Kerberos legítimos en el entorno.
   <rule id="100022" level="9">
     <if_sid>60122</if_sid>
     <field name="win.eventdata.logonType">^3$</field>
     <description>SOC - Movimiento Lateral: Autenticación de red fallida (SMB/Logon Type 3).</description>
     <mitre><id>T1550.002</id></mitre>
   </rule>
+  -->
 
+  <!-- PENDIENTE: Ajustar cuando se tenga inventario de usuarios autorizados
+       para usar cacls/icacls. Añadir exclusión por usuario y/o IP origen.
   <rule id="100030" level="10">
     <if_group>sysmon_event3</if_group>
     <field name="win.eventdata.destinationPort" type="pcre2">^(445|135|139|5985|5986|22)$</field>
     <field name="win.eventdata.initiated">true</field>
     <description>SOC - Movimiento Lateral: Conexión saliente a puerto de administración remota (SMB/WMI/WinRM/SSH).</description>
     <mitre><id>T1021</id></mitre>
+  </rule>
+  -->
+
+  <!-- ============================================================ -->
+  <!-- EXFILTRACIÓN Y C2                                             -->
+  <!-- ============================================================ -->
+
+  <rule id="100013" level="11">
+    <if_sid>61654</if_sid>
+    <field name="win.eventdata.query" type="pcre2">(?i)getscreen\.me|nextcloud\.com|anydesk\.com|teamviewer\.com|ngrok\.io|pagekite\.me|serveo\.net</field>
+    <description>SOC - C2/Exfiltración: Consulta DNS a dominio de acceso remoto o túnel conocido.</description>
+    <mitre><id>T1071.001</id></mitre>
+  </rule>
+
+  <rule id="100031" level="11">
+    <if_group>sysmon_event3</if_group>
+    <field name="win.eventdata.destinationPort" type="pcre2">^(4444|1337|8080|8443|9001|31337)$</field>
+    <description>SOC - C2: Conexión saliente a puerto asociado a frameworks de ataque (Metasploit/Cobalt Strike).</description>
+    <mitre><id>T1571</id></mitre>
   </rule>
 
   <!-- ============================================================ -->
@@ -228,25 +255,22 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   <!-- ACCESO / AUTENTICACIÓN                                        -->
   <!-- ============================================================ -->
 
-  <rule id="100016" level="12" frequency="5" timeframe="30">
+  <!-- Fuerza bruta rápida - umbral conservador por volumen Kerberos desconocido -->
+  <rule id="100016" level="12" frequency="10" timeframe="30">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
-    <description>SOC - Acceso: Fuerza bruta rápida (5 fallos en 30s desde misma IP).</description>
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.)</field>
+    <description>SOC - Acceso: Fuerza bruta rápida desde IP externa a la VPN.</description>
     <mitre><id>T1110.001</id></mitre>
   </rule>
 
-  <rule id="100043" level="11" frequency="5" timeframe="300">
+  <!-- Fuerza bruta lenta - solo desde IPs externas a la VPN -->
+  <rule id="100043" level="11" frequency="10" timeframe="300">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
-    <description>SOC - Acceso: Fuerza bruta lenta o password spraying (5 fallos en 5 min).</description>
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.)</field>
+    <description>SOC - Acceso: Fuerza bruta lenta o password spraying desde IP externa.</description>
     <mitre><id>T1110.001</id></mitre>
-  </rule>
-
-  <rule id="100017" level="9">
-    <if_sid>60106</if_sid>
-    <time>20:00 - 07:00</time>
-    <description>SOC - Acceso: Inicio de sesión exitoso fuera de horario laboral.</description>
-    <mitre><id>T1078</id></mitre>
   </rule>
 
   <rule id="100018" level="11">
@@ -269,6 +293,8 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1078</id></mitre>
   </rule>
 
+  <!-- PENDIENTE: Revisar cuando se conozca patrón real de logins simultáneos.
+       En entorno VPN con trabajo remoto genera demasiado ruido legítimo.
   <rule id="100046" level="13" frequency="3" timeframe="60">
     <if_matched_sid>60106</if_matched_sid>
     <same_field>win.eventdata.targetUserName</same_field>
@@ -276,11 +302,13 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <description>SOC - Acceso CRÍTICO: Mismo usuario autenticado en múltiples equipos simultáneamente.</description>
     <mitre><id>T1078</id></mitre>
   </rule>
+  -->
 
-  <rule id="100037" level="12" frequency="5" timeframe="120">
+  <rule id="100037" level="12" frequency="10" timeframe="120">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.targetUserName</same_field>
-    <description>SOC - Acceso: Múltiples IPs atacando la misma cuenta (Password Spraying).</description>
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.)</field>
+    <description>SOC - Acceso: Múltiples IPs externas atacando la misma cuenta (Password Spraying).</description>
     <mitre><id>T1110.003</id></mitre>
   </rule>
 
@@ -292,26 +320,25 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1110</id></mitre>
   </rule>
 
+  <!-- Solo alerta si el login viene de fuera de los rangos VPN e internos -->
   <rule id="100039" level="10">
     <if_sid>60106</if_sid>
-    <field name="win.eventdata.ipAddress" type="pcre2">^(?!10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.).*</field>
-    <description>SOC - Acceso: Login exitoso desde IP pública (fuera de red interna).</description>
+    <field name="win.eventdata.ipAddress" type="pcre2">^(?!192\.168\.14\.|192\.168\.15\.|172\.16\.|10\.).*</field>
+    <description>SOC - Acceso: Login exitoso desde IP fuera de rangos corporativos.</description>
     <mitre><id>T1078</id></mitre>
   </rule>
 
-  <rule id="100041" level="12">
-    <if_sid>60106</if_sid>
-    <field name="win.eventdata.logonType">^10$</field>
-    <time>20:00 - 07:00</time>
-    <description>SOC - Acceso: Sesión RDP iniciada fuera de horario laboral.</description>
-    <mitre><id>T1021.001</id></mitre>
-  </rule>
+  <!-- ELIMINADA: Entorno 24/7, genera ruido legítimo constante.
+  <rule id="100017"> Login fuera de horario </rule>
+  <rule id="100041"> RDP fuera de horario </rule>
+  -->
 
   <rule id="100042" level="11" frequency="5" timeframe="60">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
     <different_field>win.eventdata.targetUserName</different_field>
-    <description>SOC - Reconocimiento: Misma IP probando múltiples cuentas distintas (enumeración de usuarios).</description>
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.)</field>
+    <description>SOC - Reconocimiento: IP externa probando múltiples cuentas distintas (enumeración de usuarios).</description>
     <mitre><id>T1087.002</id></mitre>
   </rule>
 
@@ -322,7 +349,8 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   <rule id="100019" level="10" frequency="15" timeframe="15">
     <if_matched_sid>60107</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
-    <description>SOC - Red: Múltiples conexiones rápidas desde la misma IP (posible escaneo de puertos).</description>
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.)</field>
+    <description>SOC - Red: Posible escaneo de puertos desde IP externa.</description>
     <mitre><id>T1046</id></mitre>
   </rule>
 
