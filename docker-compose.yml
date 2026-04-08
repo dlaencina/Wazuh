@@ -231,6 +231,20 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1571</id></mitre>
   </rule>
 
+  <rule id="100047" level="12">
+    <if_sid>86601</if_sid>
+    <field name="data.alert.category" type="pcre2">(?i)Trojan|Exploit|Malware|Command and Control|Coin Mining|Targeted Malicious Activity</field>
+    <description>SOC - Exfiltración/Malware: Suricata detectó tráfico de red malicioso.</description>
+    <mitre><id>T1048</id></mitre>
+  </rule>
+
+  <rule id="100048" level="13">
+    <if_sid>86601</if_sid>
+    <field name="data.alert.severity">^1$</field>
+    <description>SOC - CRÍTICO: Suricata alerta de severidad máxima detectada en la red.</description>
+    <mitre><id>T1046</id></mitre>
+  </rule>
+
   <!-- ============================================================ -->
   <!-- IMPACTO                                                       -->
   <!-- ============================================================ -->
@@ -278,6 +292,21 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <if_sid>60204</if_sid>
     <description>SOC - Acceso: Cuenta bloqueada por exceso de intentos fallidos.</description>
     <mitre><id>T1110.001</id></mitre>
+  </rule>
+
+  <rule id="100045" level="13">
+    <if_sid>60122</if_sid>
+    <field name="win.eventdata.subStatus" type="pcre2">^0xc0000193$</field>
+    <description>SOC - Acceso CRÍTICO: Intento de acceso con cuenta expirada.</description>
+    <mitre><id>T1078</id></mitre>
+  </rule>
+
+  <rule id="100046" level="13" frequency="3" timeframe="60">
+    <if_matched_sid>60106</if_matched_sid>
+    <same_field>win.eventdata.targetUserName</same_field>
+    <different_field>win.system.computer</different_field>
+    <description>SOC - Acceso CRÍTICO: Mismo usuario autenticado en múltiples equipos simultáneamente.</description>
+    <mitre><id>T1078</id></mitre>
   </rule>
 
   <rule id="100037" level="12" frequency="5" timeframe="120">
