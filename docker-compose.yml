@@ -365,6 +365,8 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
 
 </group>
 
+docker exec -it wazuhsiem-wazuh.manager-1 grep -i "local_suricata\|local_rules" /var/ossec/logs/ossec.log
+
 sudo nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_suricata_rules.xml
 
 <group name="local, suricata, ids">
