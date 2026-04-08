@@ -435,9 +435,9 @@ sudo docker exec wazuhsiem-wazuh.manager-1 tail -n 30 /var/ossec/logs/ossec.log
 <Sysmon schemaversion="4.90">
   <EventFiltering>
 
-    <RuleGroup name="Filtrado Seguro DLLs" groupRelation="and">
+    <RuleGroup name="Filtrado Seguro DLLs (Rutas + Firmas)" groupRelation="and">
       <ImageLoad onmatch="exclude">
-        <ImageLoaded condition="begin with">C:\Windows\System32</ImageLoaded>
+        <ImageLoaded condition="contains any">C:\Windows\System32;C:\Windows\SysWOW64;C:\Program Files\Microsoft Office;C:\Program Files (x86)\Microsoft Office;C:\Windows\assembly;C:\Windows\Microsoft.NET</ImageLoaded>
         <Signature condition="contains">Microsoft</Signature>
         <SignatureStatus condition="is">Valid</SignatureStatus>
       </ImageLoad>
