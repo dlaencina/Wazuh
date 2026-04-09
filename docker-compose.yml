@@ -211,16 +211,35 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   </rule>
   -->
 
-  <!-- PENDIENTE: Ajustar cuando se tenga inventario de usuarios autorizados
-       para usar cacls/icacls. Añadir exclusión por usuario y/o IP origen.
+  <!-- PENDIENTE: Ajustar cuando se tenga inventario de usuarios autorizados.
   <rule id="100030" level="10">
     <if_group>sysmon_event3</if_group>
     <field name="win.eventdata.destinationPort" type="pcre2">^(445|135|139|5985|5986|22)$</field>
     <field name="win.eventdata.initiated">true</field>
-    <description>SOC - Movimiento Lateral: Conexión saliente a puerto de administración remota (SMB/WMI/WinRM/SSH).</description>
+    <description>SOC - Movimiento Lateral: Conexión saliente a puerto de administración remota.</description>
     <mitre><id>T1021</id></mitre>
   </rule>
   -->
+
+  <!-- Pass-the-Hash: logon NTLM anónimo con credenciales nulas -->
+  <rule id="100049" level="13">
+    <if_sid>60106</if_sid>
+    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)^NTLM$</field>
+    <field name="win.eventdata.logonType">^3$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^ANONYMOUS LOGON$</field>
+    <description>SOC - Credenciales: Logon NTLM anónimo detectado (posible Pass-the-Hash).</description>
+    <mitre><id>T1550.002</id></mitre>
+  </rule>
+
+  <!-- Pass-the-Hash: autenticación NTLM desde IP externa -->
+  <rule id="100050" level="13">
+    <if_sid>60106</if_sid>
+    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)^NTLM$</field>
+    <field name="win.eventdata.logonType">^3$</field>
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.|10\.|127\.|::1)</field>
+    <description>SOC - Credenciales: Autenticación NTLM tipo red desde IP externa (posible Pass-the-Hash).</description>
+    <mitre><id>T1550.002</id></mitre>
+  </rule>
 
   <!-- ============================================================ -->
   <!-- EXFILTRACIÓN Y C2                                             -->
@@ -255,7 +274,6 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   <!-- ACCESO / AUTENTICACIÓN                                        -->
   <!-- ============================================================ -->
 
-  <!-- Fuerza bruta rápida - umbral conservador por volumen Kerberos desconocido -->
   <rule id="100016" level="12" frequency="10" timeframe="30">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
@@ -264,7 +282,6 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1110.001</id></mitre>
   </rule>
 
-  <!-- Fuerza bruta lenta - solo desde IPs externas a la VPN -->
   <rule id="100043" level="11" frequency="10" timeframe="300">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
@@ -294,7 +311,6 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
   </rule>
 
   <!-- PENDIENTE: Revisar cuando se conozca patrón real de logins simultáneos.
-       En entorno VPN con trabajo remoto genera demasiado ruido legítimo.
   <rule id="100046" level="13" frequency="3" timeframe="60">
     <if_matched_sid>60106</if_matched_sid>
     <same_field>win.eventdata.targetUserName</same_field>
@@ -320,19 +336,14 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1110</id></mitre>
   </rule>
 
-  <!-- Solo alerta si el login viene de fuera de los rangos VPN e internos -->
+  <!-- Corregida: excluye localhost y rangos corporativos -->
   <rule id="100039" level="10">
     <if_sid>60106</if_sid>
-    <field name="win.eventdata.ipAddress" type="pcre2">^(?!192\.168\.14\.|192\.168\.15\.|172\.16\.|10\.).*</field>
+    <field name="win.eventdata.ipAddress" type="pcre2">^(?!192\.168\.14\.|192\.168\.15\.|172\.16\.|10\.|127\.|::1).*</field>
     <description>SOC - Acceso: Login exitoso desde IP fuera de rangos corporativos.</description>
     <mitre><id>T1078</id></mitre>
   </rule>
-
-  <!-- ELIMINADA: Entorno 24/7, genera ruido legítimo constante.
-  <rule id="100017"> Login fuera de horario </rule>
-  <rule id="100041"> RDP fuera de horario </rule>
-  -->
-
+  
   <rule id="100042" level="11" frequency="5" timeframe="60">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
