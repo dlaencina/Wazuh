@@ -526,3 +526,153 @@ Explicación del comando: Detiene e inicia el servicio de Wazuh de forma limpia.
 
 c:\Windows\sysmon64.exe -c C:\Windows\sysmonconfig.xml
 
+
+Dashboard SOC — Wazuh
+Contexto
+Dashboard configurado en OpenSearch Dashboards como parte del SOC interno basado en Wazuh 4.14. El entorno corre sobre Docker gestionado via Portainer en Ubuntu Server (10.104.2.11). Actualmente hay 1 agente activo en preproducción (WindowsAgent — Windows Server 2022), con previsión de escalar a casi 300 agentes en producción. El acceso remoto se realiza via VPN Fortinet (rango 192.168.14.x), red interna 192.168.15.x y servidores en 172.16.x.x. El entorno es 24/7. Integraciones activas: Sysmon (Event IDs 1, 3, 7, 12, 13) y Suricata IDS.
+
+Decisiones de diseño
+
+Se eliminaron los paneles de acceso fuera de horario laboral porque el entorno es 24/7.
+Se usan tablas (Data Table) en lugar de gráficos de barras para las descripciones de reglas.
+Todos los paneles de acceso excluyen rangos corporativos (192.168.14.x, 192.168.15.x, 172.16.x.x) para evitar falsos positivos.
+
+
+Paneles configurados
+Alertas Críticas (nivel 12+)
+Metric. Índice wazuh-alerts-*. Filtro rule.level between 12 and 15. Muestra el número de alertas que requieren acción inmediata en las últimas 24h.
+Alertas de Atención (nivel 10-11)
+Metric. Índice wazuh-alerts-*. Filtro rule.level between 10 and 11. Alertas de severidad media para revisión.
+Top 10 IPs con Fallos de Login
+Data Table. Índice wazuh-alerts-*. Filtro rule.id 60122 (Event 4625). Terms por data.win.eventdata.ipAddress, size 10. Identifica IPs con más intentos de login fallidos.
+Top Reglas Más Disparadas
+Data Table. Índice wazuh-alerts-*. Terms por rule.description, size 15. Muestra qué reglas generan más alertas, útil para detectar ataques y afinar falsos positivos.
+Evolución de Alertas
+Line Chart. Índice wazuh-alerts-*. Date Histogram por timestamp. Tendencia de alertas en el tiempo.
+Alertas por Agente
+Data Table. Índice wazuh-alerts-*. Excluye wazuh.manager. Terms por agent.name. Distribución de alertas por agente.
+Cuentas Bloqueadas
+Data Table. Índice wazuh-alerts-*. Filtro rule.id 60204 (Event 4740). Terms por data.win.eventdata.targetUserName. Vacío hasta que se produzca un bloqueo de cuenta.
+Vulnerabilidades por Severidad
+Data Table. Índice wazuh-states-vulnerabilities*. Terms por vulnerability.severity. Datos actuales: 7 Medium, 4 High, 1 Low.
+NTLM Anónimo / Pass-the-Hash
+Data Table. Índice wazuh-alerts-*. Filtro rule.id 100049 o 100050. Terms por data.win.eventdata.targetUserName. Detecta autenticaciones NTLM anónimas y desde IPs externas. Vacío hasta que se produzca un ataque.
+Tendencia Alertas (Hoy vs Ayer)
+TSVB. Índice wazuh-alerts-*. Dos series: alertas hoy y alertas ayer (offset 1d). Compara el volumen actual con el del día anterior.
+Parches Windows
+Data Table. Índice wazuh-alerts-*. Filtro Event IDs 19, 20, 21 (WindowsUpdateClient). Terms por data.win.system.message. Canal System añadido al agente recientemente, sin datos todavía.
+
+Limitaciones
+
+Solo 1 agente activo en preproducción.
+Los paneles de Cuentas Bloqueadas, Pass-the-Hash y Parches estarán vacíos hasta que ocurran esos eventos.
+No hay medición de volumen de tráfico en bytes. Suricata detecta por firma pero no mide megabytes.
+La gestión de estados de alertas (activo/resuelto) se realiza manualmente. Wazuh es reactivo y no gestiona estados de incidentes.
+
+
+Cambios en reglas derivados del dashboard
+Regla 100039 — Se detectó que generaba falsos positivos con localhost (127.0.0.1 y ::1). Se añadieron esas exclusiones al filtro de IPs.
+Reglas 100049 y 100050 — Añadidas para cubrir detección de Pass-the-Hash tras identificar ese gap al revisar las alertas que reportaba S2 Grupo.
+
+
+
+
+
+Reglas de detección SOC — Wazuh (local_rules.xml)
+Contexto
+Reglas personalizadas almacenadas en /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml. Las reglas de Suricata están en local_suricata_rules.xml. Todas las reglas de acceso excluyen los rangos corporativos (192.168.14.x, 192.168.15.x, 172.16.x.x) para evitar falsos positivos del tráfico legítimo via VPN Fortinet.
+
+Reglas activas
+RECONOCIMIENTO
+
+100001 — Comandos de enumeración de sistema detectados (whoami, systeminfo, ipconfig...) — T1033
+100021 — Intento de acceso a carpetas administrativas vía SMB (C,ADMIN, ADMIN
+,ADMIN, IPC$) — T1135
+
+
+EJECUCIÓN
+
+100004 — PowerShell descargando o ejecutando código remoto/ofuscado — T1059.001
+100012 — Proceso iniciado desde ruta temporal de usuario (AppData) — T1059
+100024 — Shell lanzado desde aplicación Office (posible macro maliciosa) — T1566.001
+100026 — MSHTA ejecutando contenido remoto o script (LOLBin) — T1218.005
+100027 — Descarga de archivo mediante LOLBin (certutil/bitsadmin) — T1105
+
+PERSISTENCIA
+
+100006 — Creación de tarea programada desde terminal — T1053.005
+100028 — Escritura en clave de registro de autoarranque (Run/RunOnce) — T1547.001
+
+ESCALADA DE PRIVILEGIOS
+
+100009 — Usuario añadido al grupo de Administradores locales — T1098
+
+EVASIÓN DE DEFENSAS
+
+100003 — Intento de desactivar o modificar Windows Defender — T1562.001
+100008 — Bypass de AppLocker usando Regsvr32 (Squiblydoo) — T1218.010
+100010 — Intento de detención del agente Wazuh o Sysmon (sabotaje) — T1562.001
+100015 — Habilitación de RDP vía registro o comando — T1562.001
+100029 — Carga de DLL no firmada desde ruta sospechosa (posible DLL hijacking) — T1574.001
+100036 — Intento de borrado de registros de eventos de Windows (wevtutil) — T1070.001
+
+ACCESO A CREDENCIALES
+
+100005 — Volcado de memoria LSASS (procdump, comsvcs, mimikatz) — T1003.001
+100014 — Exportación de colmenas del registro (SAM/SECURITY/SYSTEM) — T1003.002
+100025 — Acceso o volcado de NTDS.dit (base de datos de Active Directory) — T1003.003
+100049 — Logon NTLM anónimo detectado (posible Pass-the-Hash) — T1550.002
+100050 — Autenticación NTLM tipo red desde IP externa (posible Pass-the-Hash) — T1550.002
+
+MOVIMIENTO LATERAL
+
+100007 — Ejecución remota de procesos mediante WMI — T1047
+100020 — Instalación de servicio de ejecución remota sospechoso (PsExec, PAExec) — T1569.002
+
+EXFILTRACIÓN Y C2
+
+100013 — Consulta DNS a dominio de acceso remoto o túnel conocido (ngrok, AnyDesk...) — T1071.001
+100031 — Conexión saliente a puerto de frameworks de ataque (Metasploit/Cobalt Strike) — T1571
+
+IMPACTO
+
+100002 — Destrucción de copias de seguridad (posible Ransomware) — T1490
+
+ACCESO / AUTENTICACIÓN
+
+100016 — Fuerza bruta rápida desde IP externa (10 fallos en 30s) — T1110.001
+100043 — Fuerza bruta lenta / password spraying desde IP externa (10 fallos en 5 min) — T1110.001
+100018 — Fallo de login en cuenta crítica o de servicio (Administrator, svc_...) — T1110
+100044 — Cuenta bloqueada por exceso de intentos fallidos — T1110.001
+100045 — Intento de acceso con cuenta expirada (subStatus 0xc0000193) — T1078
+100037 — Múltiples IPs externas atacando la misma cuenta (Password Spraying) — T1110.003
+100038 — Login exitoso tras múltiples fallos (posible fuerza bruta exitosa) — T1110
+100039 — Login exitoso desde IP fuera de rangos corporativos — T1078
+100042 — IP externa probando múltiples cuentas distintas (enumeración de usuarios) — T1087.002
+
+ESCANEO DE RED
+
+100019 — Posible escaneo de puertos desde IP externa — T1046
+
+CORRELACIÓN
+
+100032 — Misma IP realizando escaneo y fuerza bruta simultáneamente — T1110.001
+
+CERTIFICADOS
+
+100033 — Manipulación o eliminación de certificados mediante certutil/certmgr — T1553.004
+100034 — Modificación en el almacén de certificados del sistema vía registro — T1553.004
+100035 — Descarga de certificado desde URL externa (posible CA falsa) — T1553.004
+
+SURICATA
+
+100047 — Suricata detectó tráfico de red malicioso (Trojan, Exploit, Malware, C2...) — T1048
+100048 — Suricata alerta de severidad máxima (severity 1) en la red — T1046
+
+
+Reglas pendientes de activar
+
+100011 — Modificación de permisos con cacls/icacls — Activar cuando se tenga inventario de usuarios autorizados y añadir exclusiones por usuario e IP origen
+100022 — Autenticación de red fallida SMB (Logon Type 3) — Activar cuando se conozca el volumen real de fallos Kerberos legítimos en el entorno
+100030 — Conexión saliente a puertos de administración remota (SMB, WMI, WinRM) — Activar cuando se tenga inventario de usuarios y equipos autorizados
+100046 — Mismo usuario autenticado en múltiples equipos simultáneamente — Revisar cuando se conozca el patrón real de logins simultáneos del entorno, ya que el trabajo remoto via VPN lo genera legítimamente
