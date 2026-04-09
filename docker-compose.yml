@@ -183,6 +183,26 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1003.003</id></mitre>
   </rule>
 
+  <!-- Pass-the-Hash: logon NTLM anónimo con credenciales nulas -->
+  <rule id="100049" level="13">
+    <if_sid>60106</if_sid>
+    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)^NTLM$</field>
+    <field name="win.eventdata.logonType">^3$</field>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^ANONYMOUS LOGON$</field>
+    <description>SOC - Credenciales: Logon NTLM anónimo detectado (posible Pass-the-Hash).</description>
+    <mitre><id>T1550.002</id></mitre>
+  </rule>
+
+  <!-- Pass-the-Hash: autenticación NTLM desde IP externa -->
+  <rule id="100050" level="13">
+    <if_sid>60106</if_sid>
+    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)^NTLM$</field>
+    <field name="win.eventdata.logonType">^3$</field>
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.|10\.|127\.|::1)</field>
+    <description>SOC - Credenciales: Autenticación NTLM tipo red desde IP externa (posible Pass-the-Hash).</description>
+    <mitre><id>T1550.002</id></mitre>
+  </rule>
+
   <!-- ============================================================ -->
   <!-- MOVIMIENTO LATERAL                                            -->
   <!-- ============================================================ -->
@@ -220,26 +240,6 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1021</id></mitre>
   </rule>
   -->
-
-  <!-- Pass-the-Hash: logon NTLM anónimo con credenciales nulas -->
-  <rule id="100049" level="13">
-    <if_sid>60106</if_sid>
-    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)^NTLM$</field>
-    <field name="win.eventdata.logonType">^3$</field>
-    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^ANONYMOUS LOGON$</field>
-    <description>SOC - Credenciales: Logon NTLM anónimo detectado (posible Pass-the-Hash).</description>
-    <mitre><id>T1550.002</id></mitre>
-  </rule>
-
-  <!-- Pass-the-Hash: autenticación NTLM desde IP externa -->
-  <rule id="100050" level="13">
-    <if_sid>60106</if_sid>
-    <field name="win.eventdata.authenticationPackageName" type="pcre2">(?i)^NTLM$</field>
-    <field name="win.eventdata.logonType">^3$</field>
-    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^(192\.168\.14\.|192\.168\.15\.|172\.16\.|10\.|127\.|::1)</field>
-    <description>SOC - Credenciales: Autenticación NTLM tipo red desde IP externa (posible Pass-the-Hash).</description>
-    <mitre><id>T1550.002</id></mitre>
-  </rule>
 
   <!-- ============================================================ -->
   <!-- EXFILTRACIÓN Y C2                                             -->
@@ -336,14 +336,13 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1110</id></mitre>
   </rule>
 
-  <!-- Corregida: excluye localhost y rangos corporativos -->
   <rule id="100039" level="10">
     <if_sid>60106</if_sid>
     <field name="win.eventdata.ipAddress" type="pcre2">^(?!192\.168\.14\.|192\.168\.15\.|172\.16\.|10\.|127\.|::1).*</field>
     <description>SOC - Acceso: Login exitoso desde IP fuera de rangos corporativos.</description>
     <mitre><id>T1078</id></mitre>
   </rule>
-  
+
   <rule id="100042" level="11" frequency="5" timeframe="60">
     <if_matched_sid>60122</if_matched_sid>
     <same_field>win.eventdata.ipAddress</same_field>
@@ -400,6 +399,28 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <field name="win.eventdata.commandLine" type="pcre2">(?i)certutil\s+.*(http|ftp).*\.(cer|crt|pfx|p12)</field>
     <description>SOC - Certificados: Descarga de certificado desde URL externa (posible instalación de CA falsa).</description>
     <mitre><id>T1553.004</id></mitre>
+  </rule>
+
+  <!-- ============================================================ -->
+  <!-- AUDITORÍA DE SOFTWARE                                         -->
+  <!-- ============================================================ -->
+
+  <rule id="100051" level="8">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^11707$</field>
+    <description>SOC - Auditoría: Software instalado en el sistema: $(win.eventdata.data)</description>
+    <options>no_full_log</options>
+    <group>software_install,policy_violation</group>
+    <mitre><id>T1078</id></mitre>
+  </rule>
+
+  <rule id="100052" level="12">
+    <if_group>windows</if_group>
+    <field name="win.system.eventID">^11724$</field>
+    <description>SOC - Auditoría/Alerta: Software desinstalado del sistema: $(win.eventdata.data)</description>
+    <options>no_full_log</options>
+    <group>software_uninstall,policy_violation</group>
+    <mitre><id>T1489</id></mitre>
   </rule>
 
 </group>
