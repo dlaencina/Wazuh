@@ -487,65 +487,93 @@ sudo docker exec wazuhsiem-wazuh.manager-1 tail -n 30 /var/ossec/logs/ossec.log
 
 c:\Windows\sysmon64.exe -c C:\Windows\sysmonconfig.xml
 
+
 Documentación Técnica: Despliegue e Integración de Sysmon con Wazuh
-Fase 1: Preparación del Motor y Filtros
-Descarga: Se obtuvo el binario oficial Sysmon64.exe desde la suite Sysinternals de Microsoft.
+Fase 1: Preparación del archivo de configuración
+Se descargó el binario Sysmon64.exe desde la suite Sysinternals de Microsoft. Antes de instalarlo se creó el archivo de configuración personalizado en C:\Windows\sysmonconfig.xml.
+Objetivo del archivo: Evitar la fatiga de alertas bloqueando el ruido legítimo, pero manteniendo visibilidad estricta frente a técnicas de evasión como DLL Hijacking.
+Configuración inicial aplicada:
+xml<Sysmon schemaversion="4.90">
+  <EventFiltering>
 
-Creación de Reglas (Tuning): Se creó un archivo de configuración personalizado en C:\Windows\sysmonconfig.xml.
+    <RuleGroup name="Filtrado Seguro DLLs (Rutas + Firmas)" groupRelation="and">
+      <ImageLoad onmatch="exclude">
+        <ImageLoaded condition="begin with">C:\Windows\System32</ImageLoaded>
+        <Signature condition="contains">Microsoft</Signature>
+        <SignatureStatus condition="is">Valid</SignatureStatus>
+      </ImageLoad>
+    </RuleGroup>
 
-Objetivo del archivo: Evitar la fatiga de alertas bloqueando el ruido legítimo, pero manteniendo una visibilidad estricta frente a técnicas de evasión (como DLL Hijacking).
+    <RuleGroup name="Persistencia Registro" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="contains">CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">SystemCertificates</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
 
-Exclusión Condicionada (exclude con lógica and): Se configuró para ignorar la carga de librerías (ImageLoad) en rutas nativas como C:\Windows\System32, únicamente si el archivo posee una firma criptográfica válida (Valid) perteneciente a Microsoft. Si un malware intenta ejecutar una DLL maliciosa camuflada en esa carpeta, la validación fallará y el evento será registrado.
+  </EventFiltering>
+</Sysmon>
+Decisiones de diseño clave:
+groupRelation="and" en ImageLoad — Una exclusión por ruta sola crea un punto ciego. Un atacante podría colocar una DLL maliciosa en System32 y Sysmon la ignoraría. Al combinar ruta AND firma Microsoft AND estado válido, solo se excluyen DLLs legítimas. Una DLL maliciosa no estará firmada por Microsoft, por lo que el and fallará y Sysmon la registrará igualmente.
+RegistryEvent con include — Solo se registran modificaciones en claves específicas utilizadas por atacantes para ganar persistencia (CurrentVersion\Run) y modificaciones en el almacén de certificados (SystemCertificates). Esto evita registrar todos los cambios de registro del sistema, que serían miles por minuto.
 
-Inclusión (include con lógica or): Se instruyó a Sysmon para vigilar modificaciones en el registro de Windows (RegistryEvent), concretamente en claves utilizadas por los atacantes para ganar persistencia (ej. CurrentVersion\Run).
+Fase 2: Instalación del servicio en Windows
+Desde PowerShell como administrador:
+powershell.\Sysmon64.exe -accepteula -i C:\Windows\sysmonconfig.xml
+Explicación del comando:
 
-Fase 2: Instalación del Servicio en Windows
-Se procedió a la instalación del servicio a nivel de sistema operativo para iniciar la recolección de telemetría avanzada.
+-accepteula — Acepta los términos de licencia de forma silenciosa, necesario para instalaciones por consola
+-i C:\Windows\sysmonconfig.xml — Instala el servicio aplicando la configuración personalizada desde el primer momento
 
-Se abrió una consola de PowerShell con privilegios de Administrador.
 
-Se navegó hasta el directorio donde se descargó el binario Sysmon64.exe.
+Fase 3: Integración con el agente Wazuh
+Sysmon escribe sus eventos localmente en el Visor de Eventos bajo Microsoft-Windows-Sysmon/Operational. Se configuró el agente Wazuh para leer ese canal añadiendo el siguiente bloque en C:\Program Files (x86)\ossec-agent\ossec.conf:
+xml<localfile>
+  <location>Microsoft-Windows-Sysmon/Operational</location>
+  <log_format>eventchannel</log_format>
+</localfile>
+Los canales Security y Application ya venían configurados por defecto en la instalación del agente. Se añadió adicionalmente el canal System para capturar eventos de Windows Update:
+xml<localfile>
+  <location>System</location>
+  <log_format>eventchannel</log_format>
+</localfile>
+Se reinició el servicio del agente para que releyera el ossec.conf:
+powershellRestart-Service Wazuh
 
-Se ejecutó el siguiente comando de instalación:
+Fase 4: Ajuste de configuración por problema de flooding
+Durante el funcionamiento se detectó que el Event ID 7 (carga de DLLs) generaba un estado de flooded en el agente. El motivo era que aplicaciones como Microsoft Office y el framework .NET cargan miles de DLLs legítimas por minuto, saturando la cola del manager.
+Se actualizó el archivo C:\Windows\sysmonconfig.xml para ampliar las rutas excluidas usando el operador contains any, que permite especificar múltiples rutas en una sola regla separadas por punto y coma:
+xml<Sysmon schemaversion="4.90">
+  <EventFiltering>
 
-PowerShell
-.\Sysmon64.exe -accepteula -i C:\Windows\sysmonconfig.xml
-Explicación del comando: * .\Sysmon64.exe: Llama al ejecutable principal.
+    <RuleGroup name="Filtrado Seguro DLLs (Rutas + Firmas)" groupRelation="and">
+      <ImageLoad onmatch="exclude">
+        <ImageLoaded condition="contains any">C:\Windows\System32;C:\Windows\SysWOW64;C:\Program Files\Microsoft Office;C:\Program Files (x86)\Microsoft Office;C:\Windows\assembly;C:\Windows\Microsoft.NET</ImageLoaded>
+        <Signature condition="contains">Microsoft</Signature>
+        <SignatureStatus condition="is">Valid</SignatureStatus>
+      </ImageLoad>
+    </RuleGroup>
 
--accepteula: Fuerza la aceptación silenciosa de los términos de licencia de Microsoft (necesario para instalaciones por consola).
+    <RuleGroup name="Persistencia Registro" groupRelation="or">
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="contains">CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">SystemCertificates</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
 
--i C:\Windows\sysmonconfig.xml: Instala el servicio en el sistema y le inyecta la ruta exacta de la nueva directiva de filtrado seguro.
+  </EventFiltering>
+</Sysmon>
+Se aplicó la nueva configuración en caliente sin reinstalar el servicio:
+powershellc:\Windows\sysmon64.exe -c C:\Windows\sysmonconfig.xml
 
-Fase 3: Integración del Agente (Wazuh)
-Sysmon por sí solo no envía datos a la red; escribe sus eventos de forma local en el Visor de Eventos de Windows bajo la ruta Microsoft-Windows-Sysmon/Operational. Se configuró el agente de Wazuh para leer este canal.
+Event IDs activos tras la configuración final
 
-Se editó el archivo de configuración maestro del agente ubicado en C:\Program Files (x86)\ossec-agent\ossec.conf.
-
-Se inyectó el siguiente bloque de recolección local:
-
-XML
-  <localfile>
-    <location>Microsoft-Windows-Sysmon/Operational</location>
-    <log_format>eventchannel</log_format>
-  </localfile>
-Explicación de la configuración:
-
-<localfile>: Indica a Wazuh que debe leer un origen de datos local en la máquina.
-
-<location>: Apunta exactamente a la ruta interna del Visor de Eventos donde Sysmon escribe sus hallazgos.
-
-<log_format>eventchannel</log_format>: Especifica que el formato a leer es el formato estructurado nativo de los eventos de Windows moderno.
-
-Fase 4: Aplicación y Despliegue
-Para que el agente de Wazuh comenzara a procesar esta nueva directiva de recolección de logs, se reinició su servicio.
-
-Se ejecutó el siguiente comando en PowerShell (como Administrador):
-
-PowerShell
-Restart-Service Wazuh
-Explicación del comando: Detiene e inicia el servicio de Wazuh de forma limpia. Esto obliga al agente a releer el archivo ossec.conf y a abrir la comunicación con el canal de Sysmon, enviando a partir de ese momento la telemetría validada al Manager.
-
-c:\Windows\sysmon64.exe -c C:\Windows\sysmonconfig.xml
+ID 1 — Creación de procesos — activo por defecto
+ID 3 — Conexiones de red — activo por defecto
+ID 7 — Carga de módulos/DLLs — activo con filtro de rutas y firmas
+ID 12 — Creación/eliminación de claves de registro — activo
+ID 13 — Modificación de valores de registro — activo con filtro de rutas
+ID 22 — Consultas DNS — activo por defecto
 
 
 Dashboard SOC — Wazuh
