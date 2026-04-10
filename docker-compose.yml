@@ -697,3 +697,55 @@ Reglas pendientes de activar
 100022 — Autenticación de red fallida SMB (Logon Type 3) — Activar cuando se conozca el volumen real de fallos Kerberos legítimos en el entorno
 100030 — Conexión saliente a puertos de administración remota (SMB, WMI, WinRM) — Activar cuando se tenga inventario de usuarios y equipos autorizados
 100046 — Mismo usuario autenticado en múltiples equipos simultáneamente — Revisar cuando se conozca el patrón real de logins simultáneos del entorno, ya que el trabajo remoto via VPN lo genera legítimamente
+
+
+Integración de Suricata con Wazuh
+Contexto
+Suricata corre directamente en el host Ubuntu (10.104.2.11), fuera de Docker. Wazuh corre en Docker gestionado por Portainer. La integración consiste en montar el directorio de logs de Suricata como volumen en el contenedor del manager para que pueda leerlos.
+
+1. Instalación de Suricata en el host Ubuntu
+bashsudo apt install suricata -y
+La instalación no generó el archivo de configuración automáticamente, por lo que se generó manualmente:
+bashsudo bash -c "suricata --dump-config > /etc/suricata/suricata.yaml"
+
+2. Configuración de Suricata
+Editar /etc/suricata/suricata.yaml y configurar la interfaz de red y la red interna:
+yamlaf-packet:
+  - interface: eth0
+
+vars:
+  address-groups:
+    HOME_NET: "[192.168.15.0/24,192.168.14.0/24,172.16.0.0/12,10.104.2.0/24]"
+Arrancar y habilitar Suricata:
+bashsudo systemctl enable suricata
+sudo systemctl start suricata
+Verificar que genera el archivo de alertas:
+bashls -la /var/log/suricata/eve.json
+
+3. Montar el volumen en el docker-compose.yml
+Desde el editor de stacks de Portainer, en el servicio wazuh.manager añadir el volumen:
+yamlvolumes:
+  - /var/log/suricata:/var/log/suricata:ro
+Redesplegar el stack desde Portainer.
+
+4. Configurar el manager para leer eve.json
+Editar el ossec.conf del manager en el host:
+bashsudo nano /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf
+Añadir dentro del bloque <ossec_config> existente, antes del </ossec_config> final:
+xml<localfile>
+  <log_format>eve-log</log_format>
+  <location>/var/log/suricata/eve.json</location>
+</localfile>
+Redesplegar el stack desde Portainer.
+
+5. Verificar la integración
+Comprobar que el volumen está montado correctamente:
+bashdocker exec -it wazuhsiem-wazuh.manager-1 ls -la /var/log/suricata/
+Verificar que llegan alertas de Suricata al dashboard filtrando por:
+rule.groups: suricata
+
+Reglas personalizadas de Suricata
+Las reglas están en un archivo separado /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_suricata_rules.xml con su propio grupo local, suricata, ids para mantener separación arquitectónica entre reglas Windows/Sysmon y reglas de red.
+
+Problema encontrado durante la integración
+Al crear el archivo local_suricata_rules.xml las reglas 100047 y 100048 seguían existiendo en local_rules.xml, generando warnings de IDs duplicados en el log del manager. Se resolvió eliminando esas reglas del archivo original y dejándolas únicamente en local_suricata_rules.xml.
