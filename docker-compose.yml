@@ -1100,17 +1100,16 @@ preproduction
 <agent_config>
 
   <!--
-    Grupo de entorno — NO contiene configuración activa.
-
-    Se usa exclusivamente para etiquetar agentes como pertenecientes
-    al entorno de preproducción. El filtrado en el dashboard se hace
-    mediante el campo agent.group (ej. agent.group: preproduction),
-    que Wazuh añade automáticamente a todas las alertas del agente.
-
-    No usar <labels> aquí: Wazuh ignora el bloque <labels> cuando
-    aparece en un agent.conf centralizado. Las labels reales solo
-    se aplican si se definen en el ossec.conf local del agente.
+    Grupo de entorno para servidores de preproducción / pruebas.
+    No contiene configuración de monitorización — solo etiqueta
+    las alertas con agent.labels.environment = preproduction para
+    permitir filtrado en el dashboard.
   -->
+
+  <labels>
+    <label key="environment">preproduction</label>
+    <label key="criticality">low</label>
+  </labels>
 
 </agent_config>
 
@@ -1119,17 +1118,16 @@ dmz
 <agent_config>
 
   <!--
-    Grupo de entorno — NO contiene configuración activa.
-
-    Se usa exclusivamente para etiquetar agentes expuestos al
-    exterior (DMZ / zona pública). El filtrado en el dashboard
-    se hace mediante el campo agent.group (ej. agent.group: dmz),
-    que Wazuh añade automáticamente a todas las alertas del agente.
-
-    No usar <labels> aquí: Wazuh ignora el bloque <labels> cuando
-    aparece en un agent.conf centralizado. Las labels reales solo
-    se aplican si se definen en el ossec.conf local del agente.
+    Grupo de entorno para servidores expuestos al exterior (DMZ).
+    No contiene configuración de monitorización — solo etiqueta
+    las alertas con agent.labels.environment = dmz y criticality = high
+    para permitir filtrado y priorización en el dashboard.
   -->
+
+  <labels>
+    <label key="environment">dmz</label>
+    <label key="criticality">high</label>
+  </labels>
 
 </agent_config>
 
