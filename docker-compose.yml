@@ -778,6 +778,7 @@ Las reglas están en un archivo separado /var/lib/docker/volumes/wazuhsiem_wazuh
 Problema encontrado durante la integración
 Al crear el archivo local_suricata_rules.xml las reglas 100047 y 100048 seguían existiendo en local_rules.xml, generando warnings de IDs duplicados en el log del manager. Se resolvió eliminando esas reglas del archivo original y dejándolas únicamente en local_suricata_rules.xml.
 
+windows_base
 
 <agent_config>
 
@@ -893,3 +894,50 @@ Al crear el archivo local_suricata_rules.xml las reglas 100047 y 100048 seguían
   </wodle>
 
 </agent_config>
+
+domains_controllers
+
+<agent_config>
+
+  <!-- ============================================================ -->
+  <!-- CANAL DE EVENTLOG ESPECÍFICO DE ACTIVE DIRECTORY              -->
+  <!-- ============================================================ -->
+
+  <localfile>
+    <location>Directory Service</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <localfile>
+    <location>DNS Server</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <localfile>
+    <location>File Replication Service</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <!-- ============================================================ -->
+  <!-- SYSCHECK ADICIONAL PARA RUTAS CRÍTICAS DE AD                  -->
+  <!-- ============================================================ -->
+
+  <syscheck>
+
+    <!-- NTDS: base de datos de Active Directory (contiene hashes) -->
+    <directories check_all="yes" realtime="yes">C:\Windows\NTDS</directories>
+
+    <!-- SYSVOL: scripts de logon y GPOs replicadas entre DCs -->
+    <directories check_all="yes" realtime="yes">C:\Windows\SYSVOL</directories>
+
+    <!-- Claves de registro específicas de LSA, Kerberos y NTLM -->
+    <windows_registry>HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Lsa</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Kdc</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\NTDS\Parameters</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services\Netlogon\Parameters</windows_registry>
+
+  </syscheck>
+
+</agent_config>
+
+
