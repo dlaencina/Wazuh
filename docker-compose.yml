@@ -1016,5 +1016,64 @@ sql_servers
 
 </agent_config>
 
+rdp_servers
 
+<agent_config>
+
+  <!-- ============================================================ -->
+  <!-- NOTA DE DISEÑO                                                -->
+  <!-- ============================================================ -->
+  <!--
+    Este grupo está pensado para Remote Desktop Session Hosts (RDSH):
+    servidores donde múltiples usuarios finales se conectan por RDP
+    para trabajar, NO para servidores donde RDP se usa solo como vía
+    de administración (en ese caso, basta con windows_base).
+
+    Asignar un agente a este grupo SOLO si es un RDSH real con múltiples
+    usuarios concurrentes. En caso contrario, windows_base es suficiente.
+  -->
+
+  <!-- ============================================================ -->
+  <!-- CANALES DE EVENTLOG ESPECÍFICOS DE TERMINAL SERVICES          -->
+  <!-- ============================================================ -->
+
+  <!-- Eventos operacionales de sesiones RDP (conexión/desconexión) -->
+  <localfile>
+    <location>Microsoft-Windows-TerminalServices-LocalSessionManager/Operational</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <!-- Eventos de gestión de sesiones remotas -->
+  <localfile>
+    <location>Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <!-- Eventos de RDP a nivel de protocolo -->
+  <localfile>
+    <location>Microsoft-Windows-RemoteDesktopServices-RdpCoreTS/Operational</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <!-- ============================================================ -->
+  <!-- SYSCHECK ADICIONAL PARA PERFILES DE USUARIO EN RDSH           -->
+  <!-- ============================================================ -->
+
+  <syscheck>
+
+    <!-- Carpetas de descargas de usuarios (malware descargado) -->
+    <directories check_all="yes" realtime="yes">C:\Users\*\Downloads</directories>
+
+    <!-- Carpetas de inicio automático por usuario (persistencia) -->
+    <directories check_all="yes" realtime="yes">C:\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup</directories>
+
+    <!-- Exclusión de rutas que generan ruido en perfiles de usuario -->
+    <ignore>C:\Users\Default</ignore>
+    <ignore>C:\Users\Public</ignore>
+    <ignore type="sregex">\\AppData\\Local\\Temp\\</ignore>
+    <ignore type="sregex">\\AppData\\Local\\Microsoft\\Windows\\INetCache\\</ignore>
+
+  </syscheck>
+
+</agent_config>
 
