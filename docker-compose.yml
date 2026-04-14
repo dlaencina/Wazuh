@@ -423,6 +423,30 @@ docker exec -it wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
     <mitre><id>T1489</id></mitre>
   </rule>
 
+  <!-- ============================================================ -->
+  <!-- EXCLUSIONES / FALSOS POSITIVOS                                -->
+  <!-- ============================================================ -->
+
+  <!-- Falso positivo: monitores virtuales reconocidos en sesiones RDP.
+       Windows genera Event ID 6416 (rule 60227) cuando se conecta un
+       "Remote Display Adapter" o "Generic PnP Monitor" al iniciar una
+       sesión RDP. No es un dispositivo físico ni un riesgo. -->
+  <rule id="100053" level="0">
+    <if_sid>60227</if_sid>
+    <field name="win.eventdata.deviceDescription" type="pcre2">(?i)remote display adapter|generic pnp monitor</field>
+    <description>SOC - Excluido: Dispositivo virtual RDP reconocido (falso positivo).</description>
+  </rule>
+
+  <!-- Falso positivo: conexiones automatizadas del servidor BDS a
+       carpetas RDM via cuenta de equipo. Logon type 3 (network) es
+       comportamiento esperado de esta integración. -->
+  <rule id="100054" level="0">
+    <if_sid>60106, 60137</if_sid>
+    <field name="win.eventdata.targetUserName" type="pcre2">(?i)^ADDNIXPSMBDS002\$$</field>
+    <field name="win.eventdata.logonType">^3$</field>
+    <description>SOC - Excluido: Conexión/Desconexión de red automatizada de servidor BDS a carpeta RDM.</description>
+  </rule>
+
 </group>
 
 docker exec -it wazuhsiem-wazuh.manager-1 grep -i "100047\|100048" /var/ossec/logs/ossec.log
@@ -1018,7 +1042,21 @@ sql_servers
 
 rdp_servers
 
-<agent_config os="Windows">
+<agent_config>
+
+  <!-- ============================================================ -->
+  <!-- NOTA DE DISEÑO                                                -->
+  <!-- ============================================================ -->
+  <!--
+    Este grupo está pensado para Remote Desktop Session Hosts (RDSH):
+    servidores donde múltiples usuarios finales se conectan por RDP
+    para trabajar, NO para servidores donde RDP se usa solo como vía
+    de administración (en ese caso, basta con windows_base).
+  -->
+
+  <!-- ============================================================ -->
+  <!-- CANALES DE EVENTLOG ESPECÍFICOS DE TERMINAL SERVICES          -->
+  <!-- ============================================================ -->
 
   <localfile>
     <location>Microsoft-Windows-TerminalServices-LocalSessionManager/Operational</location>
@@ -1035,35 +1073,64 @@ rdp_servers
     <log_format>eventchannel</log_format>
   </localfile>
 
+  <!-- ============================================================ -->
+  <!-- SYSCHECK ADICIONAL PARA PERFILES DE USUARIO EN RDSH           -->
+  <!-- ============================================================ -->
+
   <syscheck>
-    <directories check_all="yes">C:\Users\*\Downloads</directories>
-    <directories check_all="yes">C:\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup</directories>
+
+    <!-- Carpetas de descargas de usuarios (malware descargado) -->
+    <directories check_all="yes" realtime="yes">C:\Users\*\Downloads</directories>
+
+    <!-- Carpetas de inicio automático por usuario (persistencia) -->
+    <directories check_all="yes" realtime="yes">C:\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup</directories>
+
+    <!-- Exclusiones para reducir ruido -->
     <ignore>C:\Users\Default</ignore>
     <ignore>C:\Users\Public</ignore>
-    <ignore type="sregex">\\AppData\\Local\\Temp</ignore>
-    <ignore type="sregex">\\AppData\\Local\\Microsoft\\Windows\\INetCache</ignore>
+    <ignore type="sregex">AppData\\Local\\Temp</ignore>
+    <ignore type="sregex">AppData\\Local\\Microsoft\\Windows\\INetCache</ignore>
+
   </syscheck>
 
 </agent_config>
 
 preproduction
 
-<agent_config os="Windows">
-  <labels>
-    <label key="environment">preproduction</label>
-    <label key="criticality">low</label>
-    <label key="alert_routing">soc_tier_1_only</label>
-  </labels>
+<agent_config>
+
+  <!--
+    Grupo de entorno — NO contiene configuración activa.
+
+    Se usa exclusivamente para etiquetar agentes como pertenecientes
+    al entorno de preproducción. El filtrado en el dashboard se hace
+    mediante el campo agent.group (ej. agent.group: preproduction),
+    que Wazuh añade automáticamente a todas las alertas del agente.
+
+    No usar <labels> aquí: Wazuh ignora el bloque <labels> cuando
+    aparece en un agent.conf centralizado. Las labels reales solo
+    se aplican si se definen en el ossec.conf local del agente.
+  -->
+
 </agent_config>
 
 dmz
 
-<agent_config os="Windows">
-  <labels>
-    <label key="environment">dmz</label>
-    <label key="criticality">high</label>
-    <label key="network_zone">public_facing</label>
-  </labels>
+<agent_config>
+
+  <!--
+    Grupo de entorno — NO contiene configuración activa.
+
+    Se usa exclusivamente para etiquetar agentes expuestos al
+    exterior (DMZ / zona pública). El filtrado en el dashboard
+    se hace mediante el campo agent.group (ej. agent.group: dmz),
+    que Wazuh añade automáticamente a todas las alertas del agente.
+
+    No usar <labels> aquí: Wazuh ignora el bloque <labels> cuando
+    aparece en un agent.conf centralizado. Las labels reales solo
+    se aplican si se definen en el ossec.conf local del agente.
+  -->
+
 </agent_config>
 
 
