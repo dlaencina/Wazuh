@@ -976,4 +976,45 @@ web_servers
 
 </agent_config>
 
+sql_servers
+
+<agent_config>
+
+  <!-- ============================================================ -->
+  <!-- LOGS NATIVOS DE SQL SERVER                                    -->
+  <!-- ============================================================ -->
+
+  <!-- ERRORLOG: log principal de SQL Server (logins, errores, config) -->
+  <localfile>
+    <location>C:\Program Files\Microsoft SQL Server\MSSQL*\MSSQL\Log\ERRORLOG</location>
+    <log_format>syslog</log_format>
+  </localfile>
+
+  <!-- ============================================================ -->
+  <!-- SYSCHECK ADICIONAL PARA SQL SERVER                            -->
+  <!-- ============================================================ -->
+
+  <syscheck>
+
+    <!-- Directorio de datos de SQL (.mdf, .ldf) -->
+    <directories check_all="yes" realtime="no">C:\Program Files\Microsoft SQL Server\MSSQL*\MSSQL\DATA</directories>
+
+    <!-- Directorio de backups de SQL (.bak) -->
+    <directories check_all="yes" realtime="no">C:\Program Files\Microsoft SQL Server\MSSQL*\MSSQL\Backup</directories>
+
+    <!-- Configuración binaria de SQL Server -->
+    <directories check_all="yes" realtime="yes">C:\Program Files\Microsoft SQL Server\MSSQL*\MSSQL\Binn</directories>
+
+    <!-- Claves de registro de configuración de SQL Server -->
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Microsoft\Microsoft SQL Server</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Microsoft\MSSQLServer</windows_registry>
+
+    <!-- Exclusión de archivos de datos activos (cambian constantemente) -->
+    <ignore type="sregex">\.mdf$|\.ldf$|\.ndf$</ignore>
+
+  </syscheck>
+
+</agent_config>
+
+
 
