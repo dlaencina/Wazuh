@@ -777,3 +777,119 @@ Las reglas están en un archivo separado /var/lib/docker/volumes/wazuhsiem_wazuh
 
 Problema encontrado durante la integración
 Al crear el archivo local_suricata_rules.xml las reglas 100047 y 100048 seguían existiendo en local_rules.xml, generando warnings de IDs duplicados en el log del manager. Se resolvió eliminando esas reglas del archivo original y dejándolas únicamente en local_suricata_rules.xml.
+
+
+<agent_config>
+
+  <!-- ============================================================ -->
+  <!-- CANALES DE EVENTLOG DE WINDOWS                                -->
+  <!-- ============================================================ -->
+
+  <localfile>
+    <location>Security</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <localfile>
+    <location>System</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <localfile>
+    <location>Application</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <localfile>
+    <location>Microsoft-Windows-Sysmon/Operational</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+
+  <!-- ============================================================ -->
+  <!-- SYSCHECK (FILE INTEGRITY MONITORING)                          -->
+  <!-- ============================================================ -->
+
+  <syscheck>
+    <disabled>no</disabled>
+
+    <!-- Scan completo cada 12 horas -->
+    <frequency>43200</frequency>
+
+    <!-- Escanear al arrancar el agente -->
+    <scan_on_start>yes</scan_on_start>
+
+    <!-- Directorios con scan periódico (cada 12h) -->
+    <directories check_all="yes" realtime="no">C:\Windows\System32\wbem</directories>
+    <directories check_all="yes" realtime="no">C:\Windows\SysWOW64\drivers\etc</directories>
+    <directories check_all="yes" realtime="no">C:\Program Files</directories>
+    <directories check_all="yes" realtime="no">C:\Program Files (x86)</directories>
+
+    <!-- Directorios realtime (detección inmediata) -->
+    <directories check_all="yes" realtime="yes">C:\Windows\System32\drivers\etc</directories>
+    <directories check_all="yes" realtime="yes">C:\Windows\System32\Tasks</directories>
+    <directories check_all="yes" realtime="yes">C:\Users\Public\Desktop</directories>
+    <directories check_all="yes" realtime="yes">C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp</directories>
+
+    <!-- Claves de registro críticas -->
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\batfile</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\cmdfile</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\exefile</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\piffile</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\AllFilesystemObjects</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\Directory</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\Folder</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Classes\Protocols</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Policies</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Security</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Microsoft\Internet Explorer</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\RunOnce</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon</windows_registry>
+    <windows_registry>HKEY_LOCAL_MACHINE\System\CurrentControlSet\Services</windows_registry>
+
+    <!-- Exclusiones para reducir ruido -->
+    <ignore>C:\Program Files\Windows Defender</ignore>
+    <ignore>C:\Program Files (x86)\Windows Defender</ignore>
+    <ignore type="sregex">.log$|.htm$|.jpg$|.png$|.chm$|.pnf$|.evtx$</ignore>
+
+  </syscheck>
+
+  <!-- ============================================================ -->
+  <!-- ROOTCHECK                                                     -->
+  <!-- ============================================================ -->
+
+  <rootcheck>
+    <disabled>no</disabled>
+    <windows_apps>./shared/win_applications_rcl.txt</windows_apps>
+    <windows_malware>./shared/win_malware_rcl.txt</windows_malware>
+  </rootcheck>
+
+  <!-- ============================================================ -->
+  <!-- SCA (SECURITY CONFIGURATION ASSESSMENT)                       -->
+  <!-- ============================================================ -->
+
+  <sca>
+    <enabled>yes</enabled>
+    <scan_on_start>yes</scan_on_start>
+    <interval>12h</interval>
+    <skip_nfs>yes</skip_nfs>
+  </sca>
+
+  <!-- ============================================================ -->
+  <!-- SYSCOLLECTOR (INVENTARIO)                                     -->
+  <!-- ============================================================ -->
+
+  <wodle name="syscollector">
+    <disabled>no</disabled>
+    <interval>1h</interval>
+    <scan_on_start>yes</scan_on_start>
+    <hardware>yes</hardware>
+    <os>yes</os>
+    <network>yes</network>
+    <packages>yes</packages>
+    <ports all="no">yes</ports>
+    <processes>yes</processes>
+    <hotfixes>yes</hotfixes>
+  </wodle>
+
+</agent_config>
