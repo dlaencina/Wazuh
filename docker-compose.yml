@@ -940,4 +940,40 @@ domains_controllers
 
 </agent_config>
 
+web_servers
+
+<agent_config>
+
+  <!-- ============================================================ -->
+  <!-- LOGS DE IIS (ACCESO Y ERRORES)                                -->
+  <!-- ============================================================ -->
+
+  <!-- Logs de acceso de todos los sitios IIS -->
+  <localfile>
+    <location>C:\inetpub\logs\LogFiles\W3SVC*\*.log</location>
+    <log_format>iis</log_format>
+  </localfile>
+
+  <!-- Log de errores HTTP del kernel de IIS -->
+  <localfile>
+    <location>C:\Windows\System32\LogFiles\HTTPERR\*.log</location>
+    <log_format>iis</log_format>
+  </localfile>
+
+  <!-- ============================================================ -->
+  <!-- SYSCHECK ADICIONAL PARA IIS                                   -->
+  <!-- ============================================================ -->
+
+  <syscheck>
+
+    <!-- Directorio raíz de sitios web (detección de web shells) -->
+    <directories check_all="yes" realtime="yes" report_changes="yes">C:\inetpub\wwwroot</directories>
+
+    <!-- Configuración de IIS -->
+    <directories check_all="yes" realtime="yes">C:\Windows\System32\inetsrv\config</directories>
+
+  </syscheck>
+
+</agent_config>
+
 
