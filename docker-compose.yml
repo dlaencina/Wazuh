@@ -1981,3 +1981,124 @@ Se incorporan nuevas integraciones al SIEM (nuevos agentes, nuevas fuentes de lo
 Se crean nuevas búsquedas guardadas que merece la pena compartir con el equipo.
 
 Responsable de mantenimiento: equipo SOC interno.
+
+
+
+<agent_config>
+
+  <!-- ============================================================ -->
+  <!-- CANALES DE LOGS DE LINUX                                      -->
+  <!-- ============================================================ -->
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/auth.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/syslog</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/dpkg.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>syslog</log_format>
+    <location>/var/log/kern.log</location>
+  </localfile>
+
+  <!-- ============================================================ -->
+  <!-- SYSCHECK (FILE INTEGRITY MONITORING)                          -->
+  <!-- ============================================================ -->
+
+  <syscheck>
+    <disabled>no</disabled>
+    <frequency>43200</frequency>
+    <scan_on_start>yes</scan_on_start>
+
+    <directories check_all="yes" realtime="no">/bin</directories>
+    <directories check_all="yes" realtime="no">/sbin</directories>
+    <directories check_all="yes" realtime="no">/usr/bin</directories>
+    <directories check_all="yes" realtime="no">/usr/sbin</directories>
+    <directories check_all="yes" realtime="no">/etc</directories>
+
+    <directories check_all="yes" realtime="yes">/etc/ssh</directories>
+    <directories check_all="yes" realtime="yes">/etc/sudoers.d</directories>
+    <directories check_all="yes" realtime="yes">/etc/cron.d</directories>
+    <directories check_all="yes" realtime="yes">/root/.ssh</directories>
+
+    <directories check_all="yes" realtime="yes">/etc/passwd</directories>
+    <directories check_all="yes" realtime="yes">/etc/shadow</directories>
+    <directories check_all="yes" realtime="yes">/etc/sudoers</directories>
+    <directories check_all="yes" realtime="yes">/etc/crontab</directories>
+
+    <ignore>/etc/mtab</ignore>
+    <ignore>/etc/hosts.deny</ignore>
+    <ignore>/etc/mail/statistics</ignore>
+    <ignore>/etc/random-seed</ignore>
+    <ignore>/etc/random.seed</ignore>
+    <ignore>/etc/adjtime</ignore>
+    <ignore>/etc/httpd/logs</ignore>
+    <ignore>/etc/utmpx</ignore>
+    <ignore>/etc/wtmpx</ignore>
+    <ignore>/etc/cups/certs</ignore>
+    <ignore>/etc/dumpdates</ignore>
+    <ignore>/etc/svc/volatile</ignore>
+
+    <ignore type="sregex">.log$|.swp$</ignore>
+
+  </syscheck>
+
+  <!-- ============================================================ -->
+  <!-- ROOTCHECK                                                     -->
+  <!-- ============================================================ -->
+
+  <rootcheck>
+    <disabled>no</disabled>
+    <check_files>yes</check_files>
+    <check_trojans>yes</check_trojans>
+    <check_dev>yes</check_dev>
+    <check_sys>yes</check_sys>
+    <check_pids>yes</check_pids>
+    <check_ports>yes</check_ports>
+    <check_if>yes</check_if>
+
+    <frequency>43200</frequency>
+
+    <rootkit_files>/var/ossec/etc/shared/rootkit_files.txt</rootkit_files>
+    <rootkit_trojans>/var/ossec/etc/shared/rootkit_trojans.txt</rootkit_trojans>
+
+    <skip_nfs>yes</skip_nfs>
+  </rootcheck>
+
+  <!-- ============================================================ -->
+  <!-- SCA (SECURITY CONFIGURATION ASSESSMENT)                       -->
+  <!-- ============================================================ -->
+
+  <sca>
+    <enabled>yes</enabled>
+    <scan_on_start>yes</scan_on_start>
+    <interval>12h</interval>
+    <skip_nfs>yes</skip_nfs>
+  </sca>
+
+  <!-- ============================================================ -->
+  <!-- SYSCOLLECTOR (INVENTARIO)                                     -->
+  <!-- ============================================================ -->
+
+  <wodle name="syscollector">
+    <disabled>no</disabled>
+    <interval>1h</interval>
+    <scan_on_start>yes</scan_on_start>
+    <hardware>yes</hardware>
+    <os>yes</os>
+    <network>yes</network>
+    <packages>yes</packages>
+    <ports all="no">yes</ports>
+    <processes>yes</processes>
+  </wodle>
+
+</agent_config>
