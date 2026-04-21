@@ -1990,24 +1990,16 @@ Responsable de mantenimiento: equipo SOC interno.
   <!-- CANALES DE LOGS DE LINUX                                      -->
   <!-- ============================================================ -->
 
+  <!-- journald: unifica auth.log, syslog, kern.log y otros -->
   <localfile>
-    <log_format>syslog</log_format>
-    <location>/var/log/auth.log</location>
+    <log_format>journald</log_format>
+    <location>journald</location>
   </localfile>
 
-  <localfile>
-    <log_format>syslog</log_format>
-    <location>/var/log/syslog</location>
-  </localfile>
-
+  <!-- Gestión de paquetes (fuera de journald) -->
   <localfile>
     <log_format>syslog</log_format>
     <location>/var/log/dpkg.log</location>
-  </localfile>
-
-  <localfile>
-    <log_format>syslog</log_format>
-    <location>/var/log/kern.log</location>
   </localfile>
 
   <!-- ============================================================ -->
