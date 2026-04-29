@@ -2279,3 +2279,126 @@ volumes:
   misp_files:
   misp_ssl:
   misp_gnupg:
+
+
+
+
+
+services:
+  mail:
+    image: ghcr.io/egos-tech/smtp:1.1.3
+    restart: always
+    environment:
+      - "TZ=Europe/Madrid"
+
+  redis:
+    image: valkey/valkey:7.2
+    restart: always
+    command: |
+      sh -c '
+      exec valkey-server --requirepass "MispRedis2026Secure"
+      '
+    environment:
+      - "TZ=Europe/Madrid"
+    healthcheck:
+      test: |
+        sh -c '
+        valkey-cli -a "MispRedis2026Secure" -p 6379 ping | grep -q PONG || exit 1
+        '
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    volumes:
+      - cache_data:/data
+
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      - "MYSQL_USER=misp"
+      - "MYSQL_PASSWORD=MispDB2026Secure"
+      - "MYSQL_ROOT_PASSWORD=MispRoot2026Secure"
+      - "MYSQL_DATABASE=misp"
+      - "TZ=Europe/Madrid"
+    command: "--innodb-buffer-pool-size=512M --innodb-change-buffering=none --innodb-io-capacity=1000 --innodb-io-capacity-max=2000 --innodb-log-file-size=600M --innodb-read-io-threads=16 --innodb-stats-persistent=ON --innodb-write-io-threads=4"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    cap_add:
+      - SYS_NICE
+    healthcheck:
+      test: mysqladmin --user=$$MYSQL_USER --password=$$MYSQL_PASSWORD status
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 60s
+
+  misp-modules:
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    restart: always
+    healthcheck:
+      test: "/bin/bash -c '</dev/tcp/localhost/6666'"
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 90s
+    environment:
+      - "TZ=Europe/Madrid"
+
+  misp-core:
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    restart: always
+    cap_add:
+      - AUDIT_WRITE
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      misp-modules:
+        condition: service_healthy
+    healthcheck:
+      test: curl -ks https://10.104.2.11:8443/users/heartbeat > /dev/null || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 300s
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - misp_configs:/var/www/MISP/app/Config/
+      - misp_logs:/var/www/MISP/app/tmp/logs/
+      - misp_files:/var/www/MISP/app/files/
+      - misp_ssl:/etc/nginx/certs/
+      - misp_gnupg:/var/www/MISP/.gnupg/
+    environment:
+      - "BASE_URL=https://10.104.2.11:8443"
+      - "CRON_USER_ID=1"
+      - "DISABLE_IPV6=true"
+      - "ENABLE_DB_SETTINGS=false"
+      - "ADMIN_EMAIL=admin@addinformatica.local"
+      - "ADMIN_PASSWORD=MispAdmin2026Secure"
+      - "ADMIN_ORG=ADD-Informatica"
+      - "GPG_PASSPHRASE=MispGPG2026Empresa"
+      - "TZ=Europe/Madrid"
+      - "MYSQL_HOST=db"
+      - "MYSQL_PORT=3306"
+      - "MYSQL_USER=misp"
+      - "MYSQL_PASSWORD=MispDB2026Secure"
+      - "MYSQL_DATABASE=misp"
+      - "REDIS_HOST=redis"
+      - "REDIS_PORT=6379"
+      - "REDIS_PASSWORD=MispRedis2026Secure"
+      - "ENABLE_REDIS_EMPTY_PASSWORD=false"
+      - "SMTP_FQDN=mail"
+      - "SMTP_PORT=25"
+
+volumes:
+  mysql_data:
+  cache_data:
+  misp_configs:
+  misp_logs:
+  misp_files:
+  misp_ssl:
+  misp_gnupg:
