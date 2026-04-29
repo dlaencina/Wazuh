@@ -35,222 +35,7 @@ Fase 2 — Observación inicial. ¿Qué ves en la tabla? ¿Qué columnas necesit
 Fase 3 — Análisis del JSON. Abrir una alerta, expandir, entender campo por campo.
 Fase 4 — Hipótesis. ¿Qué crees que pasó? Formular 2-3 hipótesis.
 Fase 5 — Pivoting. Filtros nuevos para validar o descartar cada hipótesis.
-Fase 6 — Baseline. ¿Esto es normal en este entorno?
-Fase 7 — Decisión e informe. Incidente / FP / dudoso, con justificación.
-
-Reglas de oro:
-
-Time picker en Last 15 minutes antes de cada caso.
-Espera 30-60 seg tras ejecutar.
-Si filtro devuelve 0 → revisa nombre del campo (usa Add filter).
-Si regla no dispara → filtra por full_log: *comando*.
-Limpia siempre al terminar.
-
-
-ÍNDICE
-Autenticación (1-4)
-
-Fuerza bruta SSH clásica
-Password spraying
-Sudo fallido
-Login exitoso tras fallos
-
-Gestión de cuentas (5-7)
-5. Creación de usuario
-6. Modificación directa de /etc/passwd
-7. Cambio de permisos críticos
-Persistencia (8-11)
-8. Cron job malicioso
-9. Servicio systemd
-10. Modificación de shell configs
-11. SSH authorized_keys
-Integridad (12-13)
-12. Modificación de /etc/sudoers
-13. Modificación de /etc/ssh/sshd_config
-Red (14-16)
-14. Listener netcat
-15. Escaneo de puertos interno
-16. Conexiones salientes sospechosas
-Ejecución y evasión (17-19)
-17. Escritura en /tmp y ejecución
-18. Timestomping
-19. Descarga de scripts
-Final (20)
-20. Cadena de ataque completa
-
-CASO 1 — Fuerza bruta SSH clásica
-MITRE: T1110.001 (Password Guessing)
-Donde se ve: kaliAgent
-Escenario
-Atacante adivina contraseñas SSH con usuarios comunes.
-
-Variante F — manual, 3 usuarios
-Comandos
-bashssh admin@10.104.2.12
-# password cualquiera, Ctrl+C tras fallar
-
-ssh root@10.104.2.12
-# password cualquiera, Ctrl+C
-
-ssh guest@10.104.2.12
-# password cualquiera, Ctrl+C
-Alertas esperadas
-rule.idrule.descriptionnivel5710Attempt to login using a non-existent user55503PAM: User login failed5
-Investigación paso a paso
-Fase 1 — Detección
-Empiezas en Discover con time picker en Last 15 minutes. Tu primer filtro es ver qué ha hecho el agente Kali:
-agent.id: "002"
-Observa el número de hits arriba. Si ves muchos más de los habituales (compáralo con tu baseline mental), algo ha pasado.
-Fase 2 — Observación inicial
-Ya ves muchas alertas, pero están mezcladas. Filtra solo las de autenticación fallida:
-agent.id: "002" AND rule.groups: "authentication_failed"
-Añade columnas útiles desde el panel de fields (clic en + junto al campo):
-
-timestamp
-rule.id
-rule.description
-data.srcuser
-data.srcip
-
-Ordena por timestamp ascendente (clic en el encabezado hasta que la flecha apunte arriba). Ahora ves la secuencia cronológica.
-Fase 3 — Análisis del JSON
-Clic en la flecha > de la primera alerta. Se expande el JSON completo. Campos importantes que tienes que leer:
-
-agent.name — kaliAgent.
-rule.id — 5710 o 5503.
-data.srcuser — el usuario que intentó.
-data.srcip — desde dónde (en este caso el propio Kali, 127.0.0.1 o similar).
-full_log — el log crudo, léelo entero. Ves algo como Failed password for invalid user admin from 127.0.0.1 port XXXXX ssh2.
-
-Fase 4 — Hipótesis
-Formula 2-3 hipótesis antes de seguir filtrando:
-
-"Es un atacante externo probando usuarios comunes."
-"Es un administrador que olvidó su password y probó varios nombres."
-"Es una prueba autorizada de penetración."
-
-Para cada hipótesis, piensa qué datos la confirmarían o refutarían.
-Fase 5 — Pivoting
-Para validar hipótesis 1 (atacante):
-
-¿Los usuarios probados son "sospechosos"? admin, root, guest son usuarios genéricos que atacantes prueban por defecto. Eso apunta a atacante automatizado.
-
-agent.id: "002" AND data.srcuser: "admin"
-Filtra solo un usuario. ¿Cuántos intentos hubo? Si ves solo 1, es consistente con "probar usuario y seguir adelante" (spray). Si ves muchos, es brute force clásico.
-Para validar hipótesis 2 (admin olvidadizo):
-
-Un admin conocería su propio usuario. No probaría admin, root, guest al azar. Esta hipótesis pierde fuerza.
-
-Fase 6 — Baseline
-Pregúntate: "¿Cuántas alertas 5710 suelen salir al día en este entorno?". Si tu baseline es "0-1 al día", y ahora ves 3 en 30 segundos = claramente anómalo.
-Fase 7 — Decisión e informe
-Conclusión: actividad sospechosa compatible con intento de fuerza bruta básico. No es incidente grave (volumen bajo, atacante interno propio), pero en producción real sería reportable.
-Informe operativo:
-
-"Detectados 3 intentos de SSH fallidos desde 10.104.2.12 contra usuarios genéricos (admin, root, guest) en ventana de 30 segundos. Patrón compatible con fuerza bruta básica o reconocimiento de usuarios. Recomiendo monitorizar si se repite el patrón."
-
-Panel de fields — ejercicios
-
-Con el filtro activo, clic en rule.id en el panel lateral. Te muestra distribución de reglas. Anota el porcentaje de 5710 vs 5503.
-Clic en data.srcuser. ¿Cuál es el top 3?
-Clic en rule.level. ¿Qué niveles aparecen?
-Clic en full_log. Lee los 3 logs crudos más recientes y extrae:
-
-Usuario intentado.
-IP origen.
-Puerto origen.
-Mensaje de error exacto.
-
-
-
-
-Variante M — hydra con volumen
-Comandos
-bashcat > /tmp/users.txt << EOF
-admin
-administrator
-root
-guest
-user
-test
-oracle
-backup
-ftp
-mail
-EOF
-
-hydra -L /tmp/users.txt -p "wrongpass123" -t 2 -w 3 ssh://10.104.2.12 -f -V 2>/dev/null | head -20
-Alertas esperadas
-Las anteriores + correlación:
-rule.idrule.descriptionnivel2502User missed password more than one time105712SSHD brute force trying to get access10
-Investigación paso a paso
-Fase 1 — Detección
-Ahora el volumen es mucho mayor. Empieza con el filtro de alta severidad:
-agent.id: "002" AND rule.level >= 10
-Si ves hits, hay correlación disparada. Si no hay, algo raro (con este volumen debería haberla).
-Fase 2 — Observación inicial
-Añade columnas: timestamp, rule.id, rule.description, rule.level, data.srcuser, data.srcip.
-Ordena ascendente. Busca la alerta 5712 (SSHD brute force) — es la "firma oficial" de este ataque.
-Fase 3 — Análisis del JSON
-Expande la 5712. Campos clave:
-
-rule.firedtimes — cuántas veces ha disparado esta regla ya.
-rule.frequency y rule.timeframe — la correlación se basa en N fallos en X segundos.
-full_log — deberías ver el último evento que hizo saltar la correlación.
-previous_output (si existe) — eventos anteriores que formaron el patrón.
-
-Fase 4 — Hipótesis
-Con volumen alto y correlación 5712:
-
-"Fuerza bruta masiva desde un atacante."
-"Herramienta de pentesting legítima (mía o de Carlos)."
-"Servicio mal configurado reintentando auth."
-
-La 3 se descarta porque serían fallos del mismo usuario, no distintos. La 1 y 2 requieren contexto (¿estoy ejecutando hydra? → es 2; ¿no? → es 1).
-Fase 5 — Pivoting
-Quiero saber cuántos usuarios distintos se atacaron:
-En el panel de fields, clic en data.srcuser. Mira el número de valores únicos y los top values.
-agent.id: "002" AND rule.groups: "authentication_failed"
-¿10 usuarios diferentes? Eso es diccionario claro.
-Cuándo empezó y cuándo terminó:
-Ordena ascendente, mira el timestamp del primer evento. Ahora ordena descendente, mira el último. Diferencia = duración del ataque.
-Si fue en 30 segundos = herramienta automatizada. Si fue en 30 minutos = atacante manual o evasión deliberada.
-Fase 6 — Baseline
-40 fallos en 30 segundos nunca es normal. El baseline de autenticaciones fallidas en producción debería ser cercano a 0.
-Fase 7 — Decisión
-Incidente confirmado. Patrón de fuerza bruta automatizada contra diccionario de usuarios comunes.
-Informe:
-
-"Detectado ataque de fuerza bruta desde IP 10.104.2.12 contra el servidor kaliAgent (10.104.2.12). Ventana: 30 segundos. Volumen: ~40 intentos. Usuarios atacados: diccionario de 10 usuarios genéricos (admin, root, etc.). Correlación SSHD brute force (regla 5712) disparada. Ningún intento fue exitoso. Recomendaciones: 1) bloquear IP origen en firewall, 2) investigar por qué una IP interna está atacando, 3) verificar si hay compromiso del origen."
-
-Panel de fields — ejercicios
-
-data.srcuser — cuenta usuarios únicos. ¿Cuántos son?
-data.srcip — ¿todas desde la misma IP?
-rule.level — ¿% nivel 10+?
-rule.id — ¿qué regla aparece más?
-Clic en rule.firedtimes — ¿hasta cuántas veces disparó la regla en un burst?
-
-
-Variante D — evasión con delay
-Comandos
-bashfor user in alphacentauri david carlos admin administrador soporte; do
-  echo "Intentando: $user"
-  ssh $user@10.104.2.12 -o ConnectTimeout=5 -o PreferredAuthentications=password -o StrictHostKeyChecking=no 2>&1 | head -2
-  sleep 10
-done
-Alertas esperadas
-5710 / 5503 individuales. 5712 puede no disparar (delay largo).
-Investigación paso a paso
-Fase 1 — Detección
-Este es el caso más interesante porque la detección falla parcialmente. Empieza por el filtro normal:
-agent.id: "002" AND rule.level >= 10
-Probablemente sin resultados. Esto es el primer dato importante: algo está pasando pero la correlación de alto nivel no dispara.
-Amplía:
-agent.id: "002" AND rule.groups: "authentication_failed"
-Ahora sí ves los fallos individuales.
-Fase 2 — Observación inicial
-Columnas: timestamp, rule.id, data.srcuser, data.srcip.
+Fumnas: timestamp, rule.id, data.srcuser, data.srcip.
 Orden ascendente. Mira los intervalos de tiempo entre alertas. Si ves alertas cada 10 segundos separadas → es deliberadamente lento.
 Fase 3 — Análisis del JSON
 Abre una alerta. En data.srcuser ves los nombres: alphacentauri, david, carlos, administrador, soporte.
@@ -2934,26 +2719,145 @@ services:
     volumes:
       - misp-core-config:/var/www/MISP/app/Config
       - misp-core-logs:/var/www/MISP/app/tmp/logs
-      - misp-core-files:/var/www/MISP/app/files
-      - misp-core-ssl:/etc/nginx/certs
-      - misp-core-gnupg:/var/www/MISP/.gnupg
+      - misp-core-files:/var/www
+
+
+services:
+  mail:
+    image: ghcr.io/egos-tech/smtp:1.1.3
+    restart: always
+    environment:
+      - "SMARTHOST_ADDRESS=${SMARTHOST_ADDRESS}"
+      - "SMARTHOST_PORT=${SMARTHOST_PORT}"
+      - "SMARTHOST_USER=${SMARTHOST_USER}"
+      - "SMARTHOST_PASSWORD=${SMARTHOST_PASSWORD}"
+      - "SMARTHOST_ALIASES=${SMARTHOST_ALIASES}"
+      - "TZ=${TZ:-UTC}"
+
+  redis:
+    image: valkey/valkey:7.2
+    restart: always
+    command: |
+      sh -c '
+      if [ "$${ENABLE_REDIS_EMPTY_PASSWORD:-false}" = "true" ]; then
+        exec valkey-server
+      else
+        exec valkey-server --requirepass "$${REDIS_PASSWORD:-redispassword}"
+      fi
+      '
+    environment:
+      - "ENABLE_REDIS_EMPTY_PASSWORD=${ENABLE_REDIS_EMPTY_PASSWORD:-false}"
+      - "REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}"
+      - "TZ=${TZ:-UTC}"
     healthcheck:
-      test: ["CMD", "curl", "-ksf", "https://localhost"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
+      test: |
+        sh -c '
+        if [ "$${ENABLE_REDIS_EMPTY_PASSWORD:-false}" = "true" ]; then
+          valkey-cli -p $${REDIS_PORT:-6379} ping | grep -q PONG || exit 1
+        else
+          valkey-cli -a "$${REDIS_PASSWORD:-redispassword}" -p $${REDIS_PORT:-6379} ping | grep -q PONG || exit 1
+        fi
+        '
+      interval: 2s
+      timeout: 1s
+      retries: 3
+      start_period: 30s
+      start_interval: 5s
+    volumes:
+      - cache_data:/data
+
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      - "MYSQL_USER=${MYSQL_USER:-misp}"
+      - "MYSQL_PASSWORD=${MYSQL_PASSWORD:-example}"
+      - "MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-password}"
+      - "MYSQL_DATABASE=${MYSQL_DATABASE:-misp}"
+      - "TZ=${TZ:-UTC}"
+    command: "--innodb-buffer-pool-size=512M --innodb-change-buffering=none --innodb-io-capacity=1000 --innodb-io-capacity-max=2000 --innodb-log-file-size=600M --innodb-read-io-threads=16 --innodb-stats-persistent=ON --innodb-write-io-threads=4"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    cap_add:
+      - SYS_NICE
+    healthcheck:
+      test: mysqladmin --user=$$MYSQL_USER --password=$$MYSQL_PASSWORD status
+      interval: 2s
+      timeout: 1s
+      retries: 3
+      start_period: 60s
+      start_interval: 5s
+
+  misp-modules:
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    restart: always
+    healthcheck:
+      test: "/bin/bash -c '</dev/tcp/localhost/6666'"
+      interval: 2s
+      timeout: 1s
+      retries: 3
+      start_period: 60s
+      start_interval: 10s
+    environment:
+      - "TZ=${TZ:-UTC}"
+
+  misp-core:
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    restart: always
+    cap_add:
+      - AUDIT_WRITE
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      misp-modules:
+        condition: service_healthy
+    healthcheck:
+      test: curl -ks ${BASE_URL:-https://localhost}/users/heartbeat > /dev/null || exit 1
+      interval: 2s
+      timeout: 1s
+      retries: 3
       start_period: 180s
-    networks:
-      - misp-network
+      start_interval: 30s
+    ports:
+      - "${CORE_HTTP_PORT:-8080}:80"
+      - "${CORE_HTTPS_PORT:-8443}:443"
+    volumes:
+      - misp_configs:/var/www/MISP/app/Config/
+      - misp_logs:/var/www/MISP/app/tmp/logs/
+      - misp_files:/var/www/MISP/app/files/
+      - misp_ssl:/etc/nginx/certs/
+      - misp_gnupg:/var/www/MISP/.gnupg/
+    environment:
+      - "BASE_URL=${BASE_URL}"
+      - "CRON_USER_ID=${CRON_USER_ID:-1}"
+      - "DISABLE_IPV6=${DISABLE_IPV6:-true}"
+      - "ENABLE_DB_SETTINGS=${ENABLE_DB_SETTINGS:-false}"
+      - "ADMIN_EMAIL=${ADMIN_EMAIL}"
+      - "ADMIN_PASSWORD=${ADMIN_PASSWORD}"
+      - "ADMIN_KEY=${ADMIN_KEY}"
+      - "ADMIN_ORG=${ADMIN_ORG}"
+      - "GPG_PASSPHRASE=${GPG_PASSPHRASE}"
+      - "TZ=${TZ:-UTC}"
+      - "MYSQL_HOST=${MYSQL_HOST:-db}"
+      - "MYSQL_PORT=${MYSQL_PORT:-3306}"
+      - "MYSQL_USER=${MYSQL_USER:-misp}"
+      - "MYSQL_PASSWORD=${MYSQL_PASSWORD:-example}"
+      - "MYSQL_DATABASE=${MYSQL_DATABASE:-misp}"
+      - "REDIS_HOST=${REDIS_HOST:-redis}"
+      - "REDIS_PORT=${REDIS_PORT:-6379}"
+      - "REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}"
+      - "ENABLE_REDIS_EMPTY_PASSWORD=${ENABLE_REDIS_EMPTY_PASSWORD:-false}"
+      - "SMTP_FQDN=${SMTP_FQDN:-mail}"
+      - "SMTP_PORT=${SMTP_PORT:-25}"
 
 volumes:
-  misp-db-data:
-  misp-core-config:
-  misp-core-logs:
-  misp-core-files:
-  misp-core-ssl:
-  misp-core-gnupg:
+  mysql_data:
+  cache_data:
+  misp_configs:
+  misp_logs:
+  misp_files:
+  misp_ssl:
+  misp_gnupg:
 
-networks:
-  misp-network:
-    driver: bridge
