@@ -2839,3 +2839,121 @@ Al terminar deberías poder:
 
 
 Mucha suerte mañana. El miércoles revisamos dudas.
+
+services:
+  redis:
+    image: valkey/valkey:7.2
+    container_name: misp-redis
+    restart: unless-stopped
+    healthcheck:
+      test: "valkey-cli -e ping || exit 1"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    networks:
+      - misp-network
+
+  db:
+    image: mariadb:10.11
+    container_name: misp-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    command: --innodb-buffer-pool-size=512M --innodb-change-buffering=none --innodb-io-capacity=1000 --innodb-io-capacity-max=2000 --innodb-log-file-size=600M --innodb-read-io-threads=16 --innodb-stats-persistent=ON --innodb-write-io-threads=4 --tmp-table-size=512M --max-heap-table-size=512M --innodb-sort-buffer-size=16M --read-buffer-size=4M --read-rnd-buffer-size=32M
+    volumes:
+      - misp-db-data:/var/lib/mysql
+    healthcheck:
+      test: "/usr/bin/mariadb --user=$$MYSQL_USER --password=$$MYSQL_PASSWORD --execute \"SHOW DATABASES;\""
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks:
+      - misp-network
+
+  misp-modules:
+    image: ghcr.io/misp/misp-docker/misp-modules:latest
+    container_name: misp-modules
+    restart: unless-stopped
+    environment:
+      - REDIS_BACKEND=redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsSL", "http://0.0.0.0:6666/modules"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - misp-network
+
+  mail:
+    image: ghcr.io/egos-tech/smtp:1.1.3
+    container_name: misp-mail
+    restart: unless-stopped
+    networks:
+      - misp-network
+
+  misp-core:
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    container_name: misp-core
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      misp-modules:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+      - "8443:443"
+    environment:
+      - BASE_URL=${BASE_URL}
+      - MYSQL_HOST=db
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - REDIS_FQDN=redis
+      - MISP_MODULES_FQDN=http://misp-modules
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_KEY=${ADMIN_KEY}
+      - ADMIN_ORG=${ADMIN_ORG}
+      - GPG_PASSPHRASE=${GPG_PASSPHRASE}
+      - SMTP_FQDN=mail
+      - DISABLE_IPV6=true
+      - ENABLE_DB_SETTINGS=false
+      - CRON_USER_ID=1
+    volumes:
+      - misp-core-config:/var/www/MISP/app/Config
+      - misp-core-logs:/var/www/MISP/app/tmp/logs
+      - misp-core-files:/var/www/MISP/app/files
+      - misp-core-ssl:/etc/nginx/certs
+      - misp-core-gnupg:/var/www/MISP/.gnupg
+    healthcheck:
+      test: ["CMD", "curl", "-ksf", "https://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks:
+      - misp-network
+
+volumes:
+  misp-db-data:
+  misp-core-config:
+  misp-core-logs:
+  misp-core-files:
+  misp-core-ssl:
+  misp-core-gnupg:
+
+networks:
+  misp-network:
+    driver: bridge
