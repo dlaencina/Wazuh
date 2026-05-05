@@ -1,46 +1,23 @@
-nano /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp
-
-#!/bin/sh
-# custom-misp wrapper for Wazuh integratord
-# Llama al script Python embebido pasando los argumentos de Wazuh.
-
-WPYTHON_BIN="framework/python/bin/python3"
-
-SCRIPT_PATH_NAME="$0"
-DIR_NAME="$(cd "$(dirname "${SCRIPT_PATH_NAME}")" && pwd -P)"
-SCRIPT_NAME="$(basename "${SCRIPT_PATH_NAME}")"
-
-case "${DIR_NAME}" in
-    */active-response/bin | */wodles*)
-        if [ -z "${WAZUH_PATH}" ]; then
-            WAZUH_PATH="$(cd "${DIR_NAME}/../.." && pwd)"
-        fi
-        PYTHON_SCRIPT="${DIR_NAME}/${SCRIPT_NAME}.py"
-    ;;
-    */bin)
-        if [ -z "${WAZUH_PATH}" ]; then
-            WAZUH_PATH="$(cd "${DIR_NAME}/.." && pwd)"
-        fi
-        PYTHON_SCRIPT="${WAZUH_PATH}/framework/scripts/${SCRIPT_NAME}.py"
-    ;;
-    *)
-        if [ -z "${WAZUH_PATH}" ]; then
-            WAZUH_PATH="$(cd "${DIR_NAME}/.." && pwd)"
-        fi
-        PYTHON_SCRIPT="${DIR_NAME}/${SCRIPT_NAME}.py"
-    ;;
-esac
-
-# Variable de entorno con la API key de MISP
-export MISP_API_KEY="PEGA_AQUI_TU_API_KEY"
-
-${WAZUH_PATH}/${WPYTHON_BIN} "${PYTHON_SCRIPT}" "$@"
+cat > /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/test_alert.json << 'EOF'
+{
+  "id": "1234567890.123456",
+  "rule": {"id": "5710", "level": 5, "description": "Test alert"},
+  "agent": {"name": "WindowsAgent", "id": "001"},
+  "data": {
+    "srcip": "8.8.8.8",
+    "dstip": "1.1.1.1"
+  }
+}
+EOF
 
 
-chown root:999 /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp
-chmod 750 /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp
+ls -la /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/test_alert.json
 
 
-stat -c '%g' /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp.py
+portainer
 
-ls -la /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp*
+/var/ossec/integrations/custom-misp /var/ossec/integrations/test_alert.json fake_apikey http://fake
+
+tail -20 /var/ossec/logs/integrations.log
+
+
