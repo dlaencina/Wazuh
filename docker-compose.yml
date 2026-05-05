@@ -1,224 +1,46 @@
-cat > /var/ossec/integrations/custom-misp.py << 'WAZUH_MISP_EOF'
-#!/var/ossec/framework/python/bin/python3
-# -*- coding: utf-8 -*-
-#
-# custom-misp.py
-# Wazuh -> MISP integration script
-# Consulta IoCs en MISP cuando una alerta de Wazuh los contiene
-# y genera una alerta enriquecida si hay match.
-#
-# Author: David Laencina (ADD Informatica)
-# Wazuh 4.14.4 + MISP 2.5.36
-#
+nano /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp
 
-import sys
-import os
-import json
-import ipaddress
-import re
-import logging
-from socket import socket, AF_UNIX, SOCK_DGRAM
+#!/bin/sh
+# custom-misp wrapper for Wazuh integratord
+# Llama al script Python embebido pasando los argumentos de Wazuh.
 
-import requests
-from requests.exceptions import ConnectionError, Timeout
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+WPYTHON_BIN="framework/python/bin/python3"
 
-# ---------- Configuracion ----------
-MISP_URL    = "https://10.104.2.11:8443"
-MISP_KEY    = os.environ.get("MISP_API_KEY", "")
-MISP_VERIFY = False           # cert autofirmado
-HTTP_TIMEOUT = 5              # segundos, no bloquear pipeline de Wazuh
+SCRIPT_PATH_NAME="$0"
+DIR_NAME="$(cd "$(dirname "${SCRIPT_PATH_NAME}")" && pwd -P)"
+SCRIPT_NAME="$(basename "${SCRIPT_PATH_NAME}")"
 
-# Socket Wazuh (donde devolvemos la alerta enriquecida)
-SOCKET_ADDR = "/var/ossec/queue/sockets/queue"
+case "${DIR_NAME}" in
+    */active-response/bin | */wodles*)
+        if [ -z "${WAZUH_PATH}" ]; then
+            WAZUH_PATH="$(cd "${DIR_NAME}/../.." && pwd)"
+        fi
+        PYTHON_SCRIPT="${DIR_NAME}/${SCRIPT_NAME}.py"
+    ;;
+    */bin)
+        if [ -z "${WAZUH_PATH}" ]; then
+            WAZUH_PATH="$(cd "${DIR_NAME}/.." && pwd)"
+        fi
+        PYTHON_SCRIPT="${WAZUH_PATH}/framework/scripts/${SCRIPT_NAME}.py"
+    ;;
+    *)
+        if [ -z "${WAZUH_PATH}" ]; then
+            WAZUH_PATH="$(cd "${DIR_NAME}/.." && pwd)"
+        fi
+        PYTHON_SCRIPT="${DIR_NAME}/${SCRIPT_NAME}.py"
+    ;;
+esac
 
-# Log file (lo escribira el demonio wazuh-integratord como user wazuh)
-LOG_FILE = "/var/ossec/logs/integrations.log"
+# Variable de entorno con la API key de MISP
+export MISP_API_KEY="PEGA_AQUI_TU_API_KEY"
 
-# ---------- Logging ----------
-logging.basicConfig(
-    filename=LOG_FILE,
-    level=logging.INFO,
-    format="%(asctime)s [custom-misp] %(levelname)s: %(message)s",
-)
+${WAZUH_PATH}/${WPYTHON_BIN} "${PYTHON_SCRIPT}" "$@"
 
 
-# ---------- Utilidades ----------
-IP_RE     = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
-SHA256_RE = re.compile(r"\b[a-fA-F0-9]{64}\b")
-SHA1_RE   = re.compile(r"\b[a-fA-F0-9]{40}\b")
-MD5_RE    = re.compile(r"\b[a-fA-F0-9]{32}\b")
-DOMAIN_RE = re.compile(r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b")
+chown root:999 /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp
+chmod 750 /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp
 
 
-def is_public_ip(ip_str):
-    """Filtra IPs privadas/loopback/multicast: no las consultamos en MISP."""
-    try:
-        ip = ipaddress.ip_address(ip_str)
-        return not (ip.is_private or ip.is_loopback or ip.is_multicast or ip.is_reserved or ip.is_link_local)
-    except ValueError:
-        return False
+stat -c '%g' /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp.py
 
-
-def extract_iocs(alert_json):
-    """Extrae IPs publicas, hashes y dominios del JSON completo de la alerta."""
-    blob = json.dumps(alert_json)
-    iocs = {"ip-dst": set(), "sha256": set(), "sha1": set(), "md5": set(), "domain": set()}
-
-    for ip in IP_RE.findall(blob):
-        if is_public_ip(ip):
-            iocs["ip-dst"].add(ip)
-
-    iocs["sha256"].update(SHA256_RE.findall(blob))
-    # SHA1 y MD5 pueden colisionar con SHA256: solo anadir si no son substring
-    for h in SHA1_RE.findall(blob):
-        if not any(h in s for s in iocs["sha256"]):
-            iocs["sha1"].add(h)
-    for h in MD5_RE.findall(blob):
-        if not any(h in s for s in iocs["sha256"]) and not any(h in s for s in iocs["sha1"]):
-            iocs["md5"].add(h)
-
-    # dominios (filtrado basico, evitar TLDs raros y la propia infra)
-    for d in DOMAIN_RE.findall(blob):
-        d_low = d.lower()
-        if d_low.endswith((".local", ".lan", ".internal")):
-            continue
-        if "addinformatica" in d_low or "resiplus" in d_low:
-            continue
-        iocs["domain"].add(d_low)
-
-    # convertir sets a listas
-    return {k: list(v) for k, v in iocs.items() if v}
-
-
-def query_misp(value, ioc_type):
-    """Consulta MISP /attributes/restSearch por un IoC. Devuelve dict del primer match o None."""
-    if not MISP_KEY:
-        logging.error("MISP_API_KEY no esta definida en el entorno")
-        return None
-
-    headers = {
-        "Authorization": MISP_KEY,
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "returnFormat": "json",
-        "value": value,
-        "limit": 1,
-        "includeEventTags": 1,
-    }
-
-    try:
-        r = requests.post(
-            f"{MISP_URL}/attributes/restSearch",
-            headers=headers,
-            json=payload,
-            verify=MISP_VERIFY,
-            timeout=HTTP_TIMEOUT,
-        )
-    except (ConnectionError, Timeout) as e:
-        logging.warning(f"MISP no accesible para {value}: {e}")
-        return None
-
-    if r.status_code != 200:
-        logging.warning(f"MISP HTTP {r.status_code} para {value}: {r.text[:200]}")
-        return None
-
-    try:
-        data = r.json()
-    except ValueError:
-        logging.warning(f"MISP respuesta no-JSON para {value}")
-        return None
-
-    attrs = data.get("response", {}).get("Attribute", [])
-    if not attrs:
-        return None
-
-    a = attrs[0]
-    return {
-        "value": a.get("value"),
-        "type": a.get("type"),
-        "category": a.get("category"),
-        "event_id": a.get("event_id"),
-        "comment": a.get("comment", ""),
-        "to_ids": a.get("to_ids"),
-    }
-
-
-def send_to_wazuh(misp_match, original_alert):
-    """Envia evento JSON al socket de Wazuh para que se procese como nueva alerta."""
-    event = {
-        "misp": {
-            "value": misp_match["value"],
-            "type": misp_match["type"],
-            "category": misp_match["category"],
-            "event_id": misp_match["event_id"],
-            "comment": misp_match["comment"],
-            "source": {
-                "alert_id": original_alert.get("id"),
-                "rule_id": original_alert.get("rule", {}).get("id"),
-                "agent": original_alert.get("agent", {}).get("name"),
-            },
-        }
-    }
-    msg = f"1:misp:{json.dumps(event)}"
-
-    try:
-        s = socket(AF_UNIX, SOCK_DGRAM)
-        s.connect(SOCKET_ADDR)
-        s.send(msg.encode())
-        s.close()
-        logging.info(f"Match enviado a Wazuh: {misp_match['value']} ({misp_match['type']})")
-    except Exception as e:
-        logging.error(f"No se pudo enviar al socket Wazuh: {e}")
-
-
-# ---------- Main ----------
-def main():
-    if len(sys.argv) < 3:
-        logging.error(f"Uso incorrecto, argv={sys.argv}")
-        sys.exit(1)
-
-    alert_file = sys.argv[1]
-    # sys.argv[2] = api key del bloque <integration> (no usada, leemos de env)
-    # sys.argv[3] = hook_url (no usada)
-
-    try:
-        with open(alert_file, "r") as f:
-            alert = json.load(f)
-    except Exception as e:
-        logging.error(f"No se pudo leer alerta {alert_file}: {e}")
-        sys.exit(1)
-
-    iocs = extract_iocs(alert)
-    if not iocs:
-        return  # nada que consultar
-
-    logging.info(f"Alert {alert.get('id','?')} IoCs detectados: { {k:len(v) for k,v in iocs.items()} }")
-
-    # Mapeo a tipos MISP
-    type_map = {
-        "ip-dst": "ip-dst",
-        "sha256": "sha256",
-        "sha1":   "sha1",
-        "md5":    "md5",
-        "domain": "domain",
-    }
-
-    for ioc_type, values in iocs.items():
-        misp_type = type_map[ioc_type]
-        for v in values:
-            match = query_misp(v, misp_type)
-            if match:
-                send_to_wazuh(match, alert)
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        logging.exception(f"Excepcion no controlada: {e}")
-        sys.exit(1)
-WAZUH_MISP_EOF
+ls -la /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp*
