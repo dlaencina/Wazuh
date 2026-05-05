@@ -1,1 +1,2 @@
-curl -k -s -o /dev/null -w "HTTP: %{http_code}\n" https://10.104.2.11:8443/users/view/me
+/var/ossec/integrations/custom-misp /var/ossec/integrations/test_alert.json fake_apikey http://fake
+tail -20 /var/ossec/logs/integrations.log
