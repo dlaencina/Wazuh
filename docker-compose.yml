@@ -1,2 +1,389 @@
-/var/ossec/integrations/custom-misp /var/ossec/integrations/test_alert.json fake_apikey http://fake
-tail -20 /var/ossec/logs/integrations.log
+GUÍA FASE 2 — INTEGRACIÓN MISP ↔ WAZUH
+Estado de partida (lo que ya tienes hecho hoy)
+
+✅ Usuario wazuh-integration@addinformatica.local en MISP, rol User.
+✅ API key creada con Allowed IPs: 10.104.2.11/32, 172.21.0.1/32.
+✅ Feeds CIRCL OSINT y Botvrij activos y cacheados.
+✅ Script /var/ossec/integrations/custom-misp (wrapper bash, 1070 bytes).
+✅ Script /var/ossec/integrations/custom-misp.py (Python, 6761 bytes).
+✅ Permisos 750 y owner root:wazuh en ambos.
+✅ Test manual: el script ejecuta sin 403, escribe al log correctamente.
+✅ La API key real está embebida en el wrapper custom-misp.
+
+
+OBJETIVO DE FASE 2
+Que Wazuh llame automáticamente al script cuando lleguen alertas relevantes, en vez de tener que ejecutarlo a mano. Para eso hay que editar ossec.conf.
+
+PASO 2.1 — Backup del ossec.conf actual
+Por qué: vas a tocar la config de producción del Manager. Si algo se rompe, vuelves al backup.
+Dónde está el archivo: en el HOST Ubuntu, ruta:
+/opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf
+(Lo vimos en el docker-compose.yml: bind mount a /wazuh-config-mount/etc/ossec.conf dentro del contenedor.)
+Acción — desde el host como root (sudo -i si vas como usuario normal):
+bashcp /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf \
+   /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf.bak.20260506
+Qué hace: copia el archivo a un backup con fecha en el nombre. Si mañana es otra fecha, ajusta el nombre del backup.
+Verifica:
+bashls -la /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf*
+Debes ver dos archivos: el original y el .bak.20260506, mismo tamaño.
+
+PASO 2.2 — Inspeccionar el ossec.conf actual
+Antes de editar, mira qué hay para no pisar nada existente.
+bashcat /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf | head -100
+Qué hace: muestra las primeras 100 líneas. Comprueba que es un XML válido empezando por <ossec_config>.
+Busca si ya hay alguna integración:
+bashgrep -n "<integration>" /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf
+
+Si no devuelve nada → no hay integraciones, añadiremos limpio.
+Si sí devuelve líneas → hay integraciones previas (Slack, VirusTotal, etc). No las toques. Añadiremos la nuestra debajo.
+
+
+PASO 2.3 — Editar ossec.conf y añadir el bloque integration
+Acción:
+bashnano /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf
+Busca la línea con </ossec_config> (la última línea del archivo, cierre del bloque raíz). Lo más fácil: en nano, Ctrl+W, escribe </ossec_config>, Enter — te lleva a la primera ocurrencia. Si hay varias (que no debería), Ctrl+W y Enter de nuevo va a la siguiente.
+Justo encima de </ossec_config>, pega este bloque:
+xml  <!-- =============================================== -->
+  <!-- MISP integration - consulta IoCs en feeds MISP  -->
+  <!-- =============================================== -->
+  <integration>
+    <name>custom-misp</name>
+    <hook_url>https://10.104.2.11:8443</hook_url>
+    <api_key>not_used_see_wrapper</api_key>
+    <level>7</level>
+    <alert_format>json</alert_format>
+  </integration>
+Explicación de cada campo
+
+<name>custom-misp</name> → Wazuh busca /var/ossec/integrations/custom-misp (el wrapper bash). Tiene que coincidir con el nombre del archivo exactamente.
+<hook_url> → Wazuh lo pasa como tercer argumento al script. Nuestro script no lo usa (lee la URL del propio Python), pero el campo es obligatorio o Wazuh no arranca la integración.
+<api_key> → Lo pasa como segundo argumento. Nuestro script tampoco lo usa (la API key real va en variable de entorno dentro del wrapper). Pero el campo es obligatorio. Pon cualquier string no vacío.
+<level>7</level> → Solo se llama al script para alertas con rule.level >= 7. Esto es crítico: si pones level bajo, MISP recibe DoS de tu propio Wazuh. Si pones level muy alto, te pierdes detecciones.
+<alert_format>json</alert_format> → Wazuh pasa la alerta al script en formato JSON (estructurado, fácil de parsear). El script espera JSON.
+
+Filtros opcionales que puedes añadir
+Si más adelante quieres acotar más, dentro del <integration> puedes añadir antes de </integration>:
+xml    <rule_id>5710,5712,86601,86602</rule_id>
+→ solo dispara para esas reglas concretas.
+xml    <group>authentication_failed,sysmon_event3</group>
+→ solo dispara para alertas de esos grupos.
+Para empezar NO añadas filtros adicionales — solo el level es suficiente y te permite ver volumen real de consultas.
+Guarda y sal
+
+Ctrl+O → Enter
+Ctrl+X
+
+
+PASO 2.4 — Validar que el XML sigue siendo correcto
+Por qué: un XML mal formado hace que el Manager no arranque. Validamos antes de reiniciar.
+bashxmllint --noout /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf && echo "XML OK"
+Qué hace: parsea el XML sin imprimirlo. Si está bien → imprime "XML OK". Si está mal → te dice línea exacta del error.
+Si xmllint no está instalado en el host (poco probable pero posible):
+bashapt install libxml2-utils -y
+Si da error de XML → abre nano otra vez, fíjate en lo que dice el mensaje (línea N, column M), arregla, valida otra vez. No reinicies el Manager con XML inválido.
+
+PASO 2.5 — Reiniciar el contenedor del Manager
+Por qué: Wazuh lee ossec.conf solo al arrancar. Sin reinicio, el cambio no aplica.
+Tienes dos opciones, ambas válidas:
+Opción A — desde Portainer (más cómoda visualmente)
+
+Portainer → Containers.
+Busca wazuhsiem-wazuh.manager-1.
+Marca el checkbox a su izquierda.
+Botón Restart (arriba).
+Confirmas. Tarda ~30-60 segundos.
+
+Opción B — desde el host con docker
+bashdocker restart wazuhsiem-wazuh.manager-1
+Qué hace: reinicia el contenedor. Mantiene config y volúmenes.
+Mientras reinicia
+Los agentes Windows y Kali se quedan temporalmente sin enviar logs (~30-60s), luego se reconectan automáticamente. No pierdes datos: los agentes bufferean y reenvían.
+
+PASO 2.6 — Verificar que el Manager arrancó OK
+bashdocker logs --tail 50 wazuhsiem-wazuh.manager-1
+Qué hace: muestra las últimas 50 líneas del log de arranque.
+Qué buscar — señales de OK:
+
+Líneas con Started, INFO: Listening on, wazuh-analysisd: INFO: Started.
+Línea concreta importante: wazuh-integratord: INFO: Enabling integration for: 'custom-misp'. Si la ves → Wazuh ha cargado tu integración correctamente.
+
+Qué buscar — señales de PROBLEMA:
+
+ERROR, CRITICAL, Configuration error.
+wazuh-integratord: ERROR: Couldn't load integration.
+xml_parse error.
+
+Si hay error
+
+Mira qué dice exactamente el error (línea del XML, etc).
+Vuelve al backup:
+
+bash   cp /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf.bak.20260506 \
+      /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf
+   docker restart wazuhsiem-wazuh.manager-1
+
+El Manager vuelve al estado de hoy. Diagnosticas el error con tranquilidad.
+
+
+PASO 2.7 — Verificar que integratord está corriendo
+Desde la consola del contenedor del Manager (Portainer → Console):
+bashps aux | grep integratord
+Qué espero ver: una línea con wazuh-integratord activo, owner wazuh.
+Si no aparece → el demonio no arrancó (probablemente XML mal). Vuelve al backup.
+
+FASE 3 — REGLAS CUSTOM PARA ALERTAS ENRIQUECIDAS
+Objetivo
+Cuando el script encuentra match en MISP, envía un evento al socket de Wazuh con 1:misp:{...}. Sin reglas que lo capturen, ese evento se ignora. Vamos a crear reglas que lo capturen y generen alertas High/Critical.
+
+PASO 3.1 — Localizar el archivo de reglas custom
+Tienes 54 reglas custom (rango 100001-100054). Están en local_rules.xml.
+Dónde está: depende de cómo lo tengas montado. Comprueba primero si está como bind mount:
+bashdocker inspect wazuhsiem-wazuh.manager-1 | grep -A2 local_rules
+
+Si aparece como bind mount del host → editas en el host.
+Si no aparece → está dentro del volumen wazuh_etc, ruta: /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml
+
+Confirma con:
+bashls -la /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/
+Verás local_rules.xml. Esa es la ruta desde el host.
+
+PASO 3.2 — Backup de local_rules.xml
+bashcp /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml \
+   /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml.bak.20260506
+
+PASO 3.3 — Editar local_rules.xml
+bashnano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml
+Ve al final del archivo. Justo antes de </group> (la última línea del archivo cierra el grupo raíz), pega este bloque:
+xml<!-- ========================================================= -->
+<!-- MISP integration rules (rango 100055-100060)              -->
+<!-- Capturan eventos enriquecidos por custom-misp.py          -->
+<!-- ========================================================= -->
+<group name="misp,threat_intel,">
+
+  <rule id="100055" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="misp.value">\.+</field>
+    <description>MISP IoC match: $(misp.type) $(misp.value) found in event $(misp.event_id)</description>
+    <group>misp,threat_intel,</group>
+  </rule>
+
+  <rule id="100056" level="12">
+    <if_sid>100055</if_sid>
+    <field name="misp.category">Payload delivery|Network activity</field>
+    <description>MISP HIGH severity: $(misp.category) - $(misp.value) (event $(misp.event_id))</description>
+    <group>misp,threat_intel,attack,</group>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+  </rule>
+
+  <rule id="100057" level="14">
+    <if_sid>100055</if_sid>
+    <field name="misp.type">md5|sha1|sha256</field>
+    <description>MISP CRITICAL: malicious hash $(misp.value) detected on agent $(misp.source.agent)</description>
+    <group>misp,threat_intel,malware,</group>
+    <mitre>
+      <id>T1204</id>
+    </mitre>
+  </rule>
+
+</group>
+Explicación rápida
+
+100055 (level 10) → regla base, salta para cualquier match de MISP. Captura misp.value que es el campo que el script siempre rellena.
+100056 (level 12) → eleva a HIGH si el match es de categoría Payload delivery o Network activity (típico de C2, malware delivery).
+100057 (level 14) → CRITICAL si el match es un hash de archivo (md5/sha1/sha256) — significa que un binario detectado en tu infra es conocido como malicioso.
+
+if_sid significa "esta regla solo se evalúa si la 100055 ya disparó". Es jerarquía clásica de Wazuh.
+Guarda y sal
+
+Ctrl+O → Enter
+Ctrl+X
+
+
+PASO 3.4 — Validar XML de reglas
+bashxmllint --noout /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml && echo "Reglas XML OK"
+Si no da OK, revisa la línea que indica y arregla. No reinicies con XML inválido.
+
+PASO 3.5 — Reiniciar Manager para cargar reglas
+bashdocker restart wazuhsiem-wazuh.manager-1
+Espera 60 segundos. Verifica logs:
+bashdocker logs --tail 30 wazuhsiem-wazuh.manager-1 | grep -i "rule\|error"
+Busca Total rules enabled: NNNN (verás un número, probablemente alrededor de ~5000+ entre default y tuyas). Si ves errores tipo rule_id: NNN already used, has chocado con alguna regla existente — cambia los IDs (100058, 100059, 100060 en lugar de 100055-57) y recarga.
+
+FASE 4 — VALIDACIÓN END-TO-END
+Objetivo
+Forzar un match real entre Wazuh y MISP, y verificar que aparece como alerta enriquecida en el Dashboard.
+
+PASO 4.1 — Crear evento controlado en MISP
+Vas a meter manualmente un IoC conocido en MISP para garantizar match.
+En la web de MISP (logueado como admin):
+
+Event Actions → Add Event.
+Rellena:
+
+Date: hoy.
+Distribution: Your organisation only.
+Threat Level: Medium.
+Analysis: Initial.
+Event Info: TEST - Wazuh integration validation.
+
+
+Submit.
+
+Añadir un atributo (el IoC)
+Dentro del evento que acabas de crear:
+
+Click Add Attribute (botón izquierdo).
+Rellena:
+
+Category: Network activity.
+Type: ip-dst.
+Distribution: Inherit event.
+Value: 203.0.113.99 (es una IP de rango reservado para testing/documentación según RFC 5737, no afecta a nadie real).
+Comment: Test IoC for Wazuh integration.
+IDS flag: marcado ✅.
+
+
+Submit.
+
+Publicar el evento
+En la página del evento, botón Publish event. Confirma.
+⚠️ Importante: sin publicar, el atributo no aparece en /attributes/restSearch consistentemente.
+
+PASO 4.2 — Generar alerta en Wazuh que contenga el IoC
+Tienes que provocar una alerta de Wazuh con level >= 7 que contenga la IP 203.0.113.99 en algún campo.
+Opción más fácil: simular alerta directa al script
+Ejecuta desde la consola del contenedor del Manager:
+bashcat > /var/ossec/integrations/test_alert_match.json << 'EOF'
+{
+  "id": "9999999999.999999",
+  "rule": {"id": "100020", "level": 8, "description": "Test MISP match"},
+  "agent": {"name": "WindowsAgent", "id": "001"},
+  "data": {
+    "srcip": "10.104.2.121",
+    "dstip": "203.0.113.99"
+  }
+}
+EOF
+
+/var/ossec/integrations/custom-misp /var/ossec/integrations/test_alert_match.json fake fake
+sleep 2
+tail -10 /var/ossec/logs/integrations.log
+Qué espero ver en el log:
+INFO: Alert 9999999999.999999 IoCs detectados: {'ip-dst': 1}
+INFO: Match enviado a Wazuh: 203.0.113.99 (ip-dst)
+Si ves "Match enviado a Wazuh" → MISP devolvió match y el script lo envió al socket de Wazuh. ✅
+Opción real: alerta desde agente Windows
+Si quieres validar la cadena completa Sysmon → Wazuh → MISP, en el agente Windows ejecuta:
+powershellTest-NetConnection -ComputerName 203.0.113.99 -Port 80
+Sysmon Event ID 3 (network connect) debería capturarlo, generar alerta, y si la regla que lo detecta es level >= 7, integratord llamará al script.
+
+PASO 4.3 — Ver la alerta enriquecida en el Dashboard
+
+Abre Wazuh Dashboard: https://10.104.2.11.
+Login.
+Menú izquierdo → Discover (o Threat Hunting).
+En el filtro de búsqueda, escribe:
+
+   rule.id:(100055 OR 100056 OR 100057)
+
+Cambia el rango de tiempo arriba a la derecha a "Last 15 minutes".
+Deberías ver al menos una alerta con:
+
+rule.description: algo como MISP IoC match: ip-dst 203.0.113.99 found in event N
+rule.level: 10 (o 12 si MISP la categorizó como Network activity).
+misp.value: 203.0.113.99.
+misp.event_id: el ID del evento que creaste en MISP.
+
+
+
+Si la ves → integración funcionando end-to-end ✅.
+
+PASO 4.4 — Validación final desde MISP
+En MISP web, ve a Logs → Application Logs. Busca entradas recientes:
+
+Acción auth con Successful authentication using API key desde IP 172.21.0.1 → confirma que Wazuh está consultando MISP en cada alerta level >= 7.
+
+
+CONTRATIEMPOS POSIBLES Y CÓMO RESOLVERLOS
+Contratiempo 1 — El Manager no arranca tras editar ossec.conf
+Síntomas: docker logs muestra error de XML o de carga de integración.
+Solución:
+bashcp /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf.bak.20260506 \
+   /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf
+docker restart wazuhsiem-wazuh.manager-1
+Vuelves al estado actual. Diagnosticas con calma.
+Contratiempo 2 — Integratord arranca pero no se llama al script
+Síntomas: alertas con level >= 7 aparecen en el Dashboard, pero integrations.log no crece.
+Causas probables:
+
+El nombre del archivo no coincide con <name> (debe ser custom-misp exacto, sin extensión).
+Permisos del archivo cambiados (debe ser 750, owner root:wazuh).
+
+Verifica:
+bashls -la /var/lib/docker/volumes/wazuhsiem_wazuh_integrations/_data/custom-misp
+Contratiempo 3 — Script se llama pero MISP devuelve 403
+Síntomas: integrations.log muestra WARNING: MISP HTTP 403.
+Causa: la API key tiene Allowed IPs restringido y MISP ve otra IP origen distinta de las permitidas. Pasa si Docker recrea redes con IPs distintas.
+Solución: mira en MISP My Profile → Auth keys → Seen IPs la IP real, añádela a Allowed IPs.
+Contratiempo 4 — Script funciona pero no se generan alertas enriquecidas
+Síntomas: integrations.log dice Match enviado a Wazuh, pero en Discover no aparece nada con rule.id:100055.
+Causas probables:
+
+Las reglas custom no se cargaron (XML inválido).
+El campo misp.value no encaja con el regex de la regla.
+
+Verifica:
+bashdocker exec wazuhsiem-wazuh.manager-1 /var/ossec/bin/wazuh-logtest
+Esto te abre una shell interactiva donde puedes pegar un evento crudo y ver qué regla matchea. Pega:
+1:misp:{"misp":{"value":"203.0.113.99","type":"ip-dst","category":"Network activity","event_id":"1","comment":"test","source":{"alert_id":"X","rule_id":"Y","agent":"Z"}}}
+Te dirá si alguna regla 100055-57 dispara.
+Contratiempo 5 — MISP cae o satura
+Síntomas: alertas tardan más, MISP web va lenta, contenedor MISP-core consume mucha CPU.
+Causa: demasiadas alertas level 7+ → demasiadas consultas API.
+Solución: sube el <level> de la integración a 9 o 10:
+xml<level>9</level>
+Reinicia Manager. El volumen de consultas baja drásticamente.
+Contratiempo 6 — Olvidaste publicar el evento de test en MISP
+Síntoma: el script ejecuta sin error pero MISP devuelve array vacío para 203.0.113.99.
+Solución: vuelve al evento en MISP web, click Publish event.
+
+RESUMEN FINAL DE COMANDOS DE ARRANQUE MAÑANA
+Para no perder tiempo mañana, los comandos clave en orden:
+bash# 1. Sesión root
+sudo -i
+
+# 2. Backup ossec.conf
+cp /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf \
+   /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf.bak.20260506
+
+# 3. Editar ossec.conf, añadir bloque <integration> antes de </ossec_config>
+nano /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf
+
+# 4. Validar
+xmllint --noout /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf && echo "OK"
+
+# 5. Backup local_rules.xml
+cp /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml \
+   /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml.bak.20260506
+
+# 6. Editar reglas, añadir bloque antes del </group> final
+nano /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml
+
+# 7. Validar
+xmllint --noout /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml && echo "OK"
+
+# 8. Reiniciar Manager
+docker restart wazuhsiem-wazuh.manager-1
+
+# 9. Ver logs de arranque
+sleep 30
+docker logs --tail 50 wazuhsiem-wazuh.manager-1 | grep -iE "integration|error|critical"
+
+# 10. Test del script (desde consola del contenedor en Portainer):
+#     /var/ossec/integrations/custom-misp /var/ossec/integrations/test_alert.json fake fake
+#     tail -10 /var/ossec/logs/integrations.log
+
+Si algo se tuerce mañana y no encuentras solución en los contratiempos, apunta el error literal y me lo cuentas cuando puedas — pero con esta guía deberías poder hacer las tres fases tú solo.
+Suerte mañana.
