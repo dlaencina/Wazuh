@@ -369,6 +369,9 @@ xmllint --noout /opt/wazuh/single-node/config/wazuh_cluster/wazuh_manager.conf &
 
 # 5. Backup local_rules.xml
 cp /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml \
+
+
+curl -k -s -X POST "https://10.104.2.11:8443/attributes/restSearch" -H "Authorization: zxd4QGn1a21qg2q3VhCowO0xdhoLys857duoHr3m" -H "Accept: application/json" -H "Content-Type: application/json" -d '{"returnFormat":"json","value":"203.0.113.99","limit":1}'
    /var/lib/docker/volumes/wazuhsiem_wazuh_etc/_data/rules/local_rules.xml.bak.20260506
 
 # 6. Editar reglas, añadir bloque antes del </group> final
