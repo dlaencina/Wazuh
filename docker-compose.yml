@@ -399,3 +399,12 @@ curl -k -s -H "Authorization: zxd4QGn1a21qg2q3VhCowO0xdhoLys857duoHr3m" -H "Acce
 curl -k -s -X POST "https://10.104.2.11:8443/attributes/restSearch" -H "Authorization: zxd4QGn1a21qg2q3VhCowO0xdhoLys857duoHr3m" -H "Accept: application/json" -H "Content-Type: application/json" -d '{"returnFormat":"json","value":"203.0.113.99","limit":1}'
 
 curl -kv -X POST 'https://10.104.2.11:8443/attributes/restSearch' -H 'Authorization: zxd4QGn1a21qg2q3VhCowO0xdhoLys857duoHr3m' -H 'Accept: application/json' -H 'Content-Type: application/json' -d '{"returnFormat":"json","value":"203.0.113.99"}' 2>&1 | tail -30
+
+/var/ossec/framework/python/bin/python3 -c "
+import os, requests, urllib3
+urllib3.disable_warnings()
+os.environ['MISP_API_KEY'] = 'zxd4QGn1a21qg2q3VhCowO0xdhoLys857duoHr3m'
+r = requests.post('https://10.104.2.11:8443/attributes/restSearch', headers={'Authorization': os.environ['MISP_API_KEY'], 'Accept':'application/json', 'Content-Type':'application/json'}, json={'returnFormat':'json','value':'203.0.113.99','limit':5}, verify=False, timeout=10)
+print('Status:', r.status_code)
+print('Body:', r.text[:500])
+"
