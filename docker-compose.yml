@@ -1,3 +1,6 @@
+
+
+
 GUÍA FASE 2 — INTEGRACIÓN MISP ↔ WAZUH
 Estado de partida (lo que ya tienes hecho hoy)
 
@@ -387,3 +390,5 @@ docker logs --tail 50 wazuhsiem-wazuh.manager-1 | grep -iE "integration|error|cr
 
 Si algo se tuerce mañana y no encuentras solución en los contratiempos, apunta el error literal y me lo cuentas cuando puedas — pero con esta guía deberías poder hacer las tres fases tú solo.
 Suerte mañana.
+
+curl -k -s -H "Authorization: zxd4QGn1a21qg2q3VhCowO0xdhoLys857duoHr3m" -H "Accept: application/json" -H "Content-Type: application/json" -X POST -d '{"value":"203.0.113.99","limit":1}' https://10.104.2.11:8443/attributes/restSearch
